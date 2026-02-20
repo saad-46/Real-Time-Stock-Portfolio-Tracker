@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 💼 Real-Time Stock Portfolio Tracker
 
 A professional Java desktop application for tracking stock portfolios with real-time prices, database persistence, and modern UI.
@@ -241,3 +242,7 @@ java -cp ".;lib/*" com.portfolio.MainUI
 ```
 
 Enjoy tracking your portfolio! 💼📊
+=======
+# Real-Time-Stock-Portfolio-Tracker
+IRP JAVA 
+>>>>>>> f929ab51bad68ce0c8fba448bf931bf3543dafe6
