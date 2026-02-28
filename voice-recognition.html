@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Voice Recognition</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            font-size: 32px;
+            margin-bottom: 20px;
+        }
+        #status {
+            font-size: 24px;
+            margin: 20px 0;
+            min-height: 60px;
+        }
+        #result {
+            font-size: 18px;
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            min-height: 50px;
+        }
+        .mic-icon {
+            font-size: 80px;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .listening {
+            animation: pulse 0.5s infinite;
+            color: #4ade80;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎤 Voice Assistant</h1>
+        <div class="mic-icon" id="micIcon">🎤</div>
+        <div id="status">Ready to listen...</div>
+        <div id="result"></div>
+    </div>
+
+    <script>
+        // Check if browser supports speech recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            document.getElementById('status').innerText = 'Speech recognition not supported in this browser. Please use Chrome or Edge.';
+        } else {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-IN';  // Indian English
+            recognition.continuous = false;
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+            
+            const statusDiv = document.getElementById('status');
+            const resultDiv = document.getElementById('result');
+            const micIcon = document.getElementById('micIcon');
+            
+            // Auto-start listening
+            setTimeout(() => {
+                recognition.start();
+            }, 500);
+            
+            recognition.onstart = () => {
+                statusDiv.innerText = '🎤 Listening... Speak now!';
+                micIcon.classList.add('listening');
+            };
+            
+            recognition.onresult = (event) => {
+                const command = event.results[0][0].transcript;
+                const confidence = event.results[0][0].confidence;
+                
+                resultDiv.innerText = `Heard: "${command}" (${Math.round(confidence * 100)}% confident)`;
+                statusDiv.innerText = '✅ Processing command...';
+                micIcon.classList.remove('listening');
+                
+                // Send to Java via HTTP
+                fetch('http://localhost:8765/voice-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        command: command,
+                        confidence: confidence
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    statusDiv.innerText = '✅ Command executed!';
+                    setTimeout(() => {
+                        window.close();
+                    }, 1500);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    statusDiv.innerText = '❌ Error sending command';
+                });
+            };
+            
+            recognition.onerror = (event) => {
+                statusDiv.innerText = `❌ Error: ${event.error}`;
+                micIcon.classList.remove('listening');
+                
+                if (event.error === 'no-speech') {
+                    statusDiv.innerText = '❌ No speech detected. Please try again.';
+                } else if (event.error === 'not-allowed') {
+                    statusDiv.innerText = '❌ Microphone access denied. Please allow microphone access.';
+                }
+                
+                setTimeout(() => {
+                    window.close();
+                }, 2000);
+            };
+            
+            recognition.onend = () => {
+                micIcon.classList.remove('listening');
+            };
+        }
+    </script>
+</body>
+</html>

@@ -1,248 +1,211 @@
-<<<<<<< HEAD
-# 💼 Real-Time Stock Portfolio Tracker
+# 📊 StockVault - Portfolio Tracker
 
-A professional Java desktop application for tracking stock portfolios with real-time prices, database persistence, and modern UI.
+**100% Pure Java Desktop Application**  
+A professional stock portfolio management system with real-time price updates, charts, and analytics.
 
-![Java](https://img.shields.io/badge/Java-SE-orange)
-![JDBC](https://img.shields.io/badge/JDBC-SQLite-blue)
-![Swing](https://img.shields.io/badge/GUI-Swing-green)
+---
 
 ## 🚀 Quick Start
 
-```bash
-java -cp ".;lib/*" com.portfolio.MainUI
+### Run the Application
+```cmd
+RUN-PREMIUM-DASHBOARD.bat
 ```
+
+Or manually:
+```cmd
+java -cp ".;lib/*" com.portfolio.ui.PremiumStockDashboard
+```
+
+---
 
 ## ✨ Features
 
-- 📊 **Real-time Stock Prices** - Fetch live prices from Alpha Vantage API
-- 💾 **Database Persistence** - All data automatically saved to SQLite
-- 🎨 **Modern Dark Theme UI** - Beautiful, professional interface
-- 📈 **Interactive Charts** - 4 different chart types for visualization
-- ✅ **Stock Validation** - Verify stocks exist before adding
-- 💰 **Profit/Loss Tracking** - See your gains and losses in real-time
-- 📜 **Transaction History** - Complete audit trail of all trades
-- 🔄 **Auto-save/Load** - Data persists between sessions
+### 📱 Pages
+- **Dashboard** - Portfolio overview with stats cards
+- **My Portfolio** - Manage your holdings, add stocks, refresh prices
+- **Market** - Browse popular stocks with charts
+- **Watchlist** - Track favorite stocks
+- **Transactions** - Complete trade history
+- **Analytics** - 4 professional charts (JFreeChart)
+- **Settings** - Application preferences
 
-## 📸 Screenshots
+### 🎨 UI Features
+- Dark theme with purple accents
+- Sidebar navigation (always visible)
+- Search bar with autocomplete
+- Responsive layout
+- Professional charts and tables
 
-### Main Window
-- Stock table with live prices
-- Summary cards (investment, value, profit/loss)
-- Color-coded gains (green) and losses (red)
-- Refresh, Add Stock, and Charts buttons
+### 💰 Data Features
+- Real-time stock prices (Alpha Vantage API)
+- SQLite database persistence
+- Indian Rupee (₹) currency
+- Automatic price updates
+- Transaction history tracking
 
-### Add Stock Dialog
-- Stock symbol validation
-- Real-time feedback (✓ valid, ✗ invalid)
-- Auto-fill current price
-- Prevents invalid stocks
-
-### Charts Window
-- Portfolio distribution pie chart
-- Profit vs loss pie chart
-- Stock values bar chart
-- Gain/loss bar chart
-
-## 🎓 Technologies Used
-
-- **Java SE** - Core programming language
-- **Swing** - GUI framework
-- **JDBC** - Database connectivity
-- **SQLite** - Lightweight embedded database
-- **JFreeChart** - Chart visualization library
-- **Alpha Vantage API** - Real-time stock price data
-- **SLF4J** - Logging framework
+---
 
 ## 📁 Project Structure
 
 ```
-portfolio-tracker/
-├── src/com/portfolio/
-│   ├── model/              # Data models (Stock, PortfolioItem, Transaction)
-│   ├── service/            # Business logic (PortfolioService, API services)
-│   ├── database/           # Database layer (DatabaseManager, DAO)
-│   ├── ui/                 # User interface (Modern UI, Charts)
-│   ├── Main.java           # Console version
-│   └── MainUI.java         # GUI launcher
+├── src/com/portfolio/          # Source code
+│   ├── model/                  # Data models (Stock, PortfolioItem, Transaction)
+│   ├── service/                # Business logic (PortfolioService, AlphaVantageService)
+│   ├── database/               # Database operations (PortfolioDAO, DatabaseManager)
+│   └── ui/                     # User interface
+│       ├── PremiumStockDashboard.java  # Main application (CURRENT)
+│       └── PremiumPortfolioUI.java     # Alternative UI
 │
-├── lib/                    # External libraries
-│   ├── jfreechart-1.5.4.jar
-│   ├── sqlite-jdbc-3.45.1.0.jar
-│   ├── slf4j-api-2.0.9.jar
-│   └── slf4j-simple-2.0.9.jar
+├── lib/                        # External libraries
+│   ├── jfreechart-1.5.4.jar   # Charts
+│   ├── sqlite-jdbc-3.45.1.0.jar # Database
+│   ├── json-20231013.jar      # JSON parsing
+│   └── slf4j-*.jar            # Logging
 │
-├── docs/                   # Documentation
-└── portfolio.db            # SQLite database (auto-created)
+├── com/                        # Compiled classes
+├── portfolio.db                # SQLite database
+├── RUN-PREMIUM-DASHBOARD.bat   # Run script
+├── PREMIUM-DASHBOARD-README.md # Detailed documentation
+├── WHATS-NEW-PREMIUM.md        # Feature comparison
+└── archive/                    # Old/unused files
+    ├── old-ui/                 # Previous UI versions
+    ├── web-version/            # Web app (not used)
+    └── old-docs/               # Old documentation
 ```
-
-## 🔧 Requirements
-
-- **Java JDK 8+** (tested with JDK 25)
-- **Internet connection** (for fetching stock prices)
-- **Alpha Vantage API key** (free tier: 25 requests/day)
-
-## 💡 Usage
-
-### First Time Setup
-1. Clone the repository
-2. Navigate to project directory
-3. Run: `java -cp ".;lib/*" com.portfolio.MainUI`
-
-### Add Your First Stock
-1. Click **"+ Add Stock"**
-2. Enter symbol: `AAPL`
-3. Click **"🔍 Validate"**
-4. Enter quantity: `10`
-5. Price auto-fills from validation
-6. Click **"Add Stock"**
-
-### Update Prices
-1. Click **"🔄 Refresh"**
-2. Wait for API calls
-3. See updated prices and profit/loss
-
-### View Charts
-1. Click **"📊 Charts"**
-2. Explore 4 different visualizations
-
-## 🗄️ Database
-
-### Tables Created Automatically:
-
-**portfolio_items** - Your stock holdings
-```sql
-- id, symbol, name, quantity
-- purchase_price, current_price, created_at
-```
-
-**transactions** - Transaction history
-```sql
-- id, symbol, type (BUY/SELL)
-- quantity, price, timestamp
-```
-
-### Database File
-- **Location**: `portfolio.db` in project root
-- **Type**: SQLite (single file)
-- **Backup**: Just copy the file!
-
-## 🎨 Code Quality
-
-Every line has detailed comments:
-```java
-private List<PortfolioItem> portfolioItems;  // List of all stocks you own (ex: [Apple x10, Tesla x5])
-```
-
-Comments include:
-- What the code does
-- Why it's there
-- Real examples (AAPL, TSLA, etc.)
-
-## 🎯 Key Classes
-
-### Model Layer
-- **Stock.java** - Represents a stock (symbol, name, price)
-- **PortfolioItem.java** - Stock + quantity + purchase price
-- **Transaction.java** - Buy/sell transaction record
-
-### Service Layer
-- **PortfolioService.java** - Portfolio business logic
-- **AlphaVantageService.java** - Fetches real stock prices
-- **StockValidator.java** - Validates stock symbols
-
-### Database Layer
-- **DatabaseManager.java** - Connection management
-- **PortfolioDAO.java** - CRUD operations
-
-### UI Layer
-- **ModernPortfolioUI.java** - Main window (dark theme)
-- **ModernChartWindow.java** - Charts window
-
-## 🚦 How It Works
-
-```
-User clicks "Add Stock"
-    ↓
-ModernPortfolioUI captures input
-    ↓
-PortfolioService processes business logic
-    ↓
-PortfolioDAO saves to database
-    ↓
-SQLite stores in portfolio.db
-    ↓
-UI refreshes to show new stock
-```
-
-## 🎓 Learning Outcomes
-
-This project demonstrates:
-- ✅ Object-Oriented Programming
-- ✅ JDBC & Database Programming
-- ✅ GUI Development with Swing
-- ✅ API Integration
-- ✅ Multi-threading (SwingWorker)
-- ✅ Exception Handling
-- ✅ Collections Framework
-- ✅ Design Patterns (DAO, Service Layer, MVC)
-
-## 📚 Documentation
-
-- **[START-HERE.md](START-HERE.md)** - Quick start guide
-- **[PROJECT-STRUCTURE.md](PROJECT-STRUCTURE.md)** - Code organization
-- **[docs/DATABASE-README.md](docs/DATABASE-README.md)** - Database guide
-- **[docs/UI-README.md](docs/UI-README.md)** - UI guide
-- **[docs/PROJECT-SUMMARY.md](docs/PROJECT-SUMMARY.md)** - Complete overview
-
-## 🐛 Troubleshooting
-
-**Window doesn't open?**
-- Check console for errors
-- Verify all JARs in `lib` folder
-
-**Can't add stock?**
-- Click "Validate" first
-- Check internet connection
-- Verify API key
-
-**Database errors?**
-- Delete `portfolio.db` to start fresh
-- Check file permissions
-
-## 📝 License
-
-Educational project for learning Java, JDBC, and GUI programming.
-
-## 🙏 Credits
-
-- **Alpha Vantage** - Stock price API
-- **JFreeChart** - Chart library
-- **SQLite** - Database engine
-
-## 🌟 Features Showcase
-
-- Professional-quality code with comprehensive comments
-- Enterprise-level architecture (MVC, DAO patterns)
-- Real-world API integration
-- Modern, beautiful UI design
-- Complete database persistence
-- Production-ready application
 
 ---
 
-**Made with ❤️ for learning enterprise Java development**
+## 🛠️ Technical Stack
 
-## 🚀 Get Started Now!
+- **Language**: Java (100% - No HTML/CSS/JS)
+- **UI Framework**: Java Swing
+- **Database**: SQLite (JDBC)
+- **Charts**: JFreeChart 1.5.4
+- **API**: Alpha Vantage (Stock prices)
+- **Architecture**: MVC Pattern
 
-```bash
-git clone https://github.com/saad-46/Real-Time-Stock-Portfolio-Tracker.git
-cd Real-Time-Stock-Portfolio-Tracker
-java -cp ".;lib/*" com.portfolio.MainUI
+---
+
+## 📖 How to Use
+
+### 1. Add Stocks
+1. Click "My Portfolio" in sidebar
+2. Click "+ Add Stock" button
+3. Enter symbol (e.g., AAPL), quantity, and purchase price
+4. Click "Add Stock"
+
+### 2. Refresh Prices
+1. Go to "My Portfolio"
+2. Click "↻ Refresh Prices"
+3. Wait for API to fetch latest prices
+
+### 3. View Charts
+1. Go to "Market" page
+2. Click "View Chart" on any stock card
+3. See 30-day price history
+
+### 4. Check Analytics
+1. Click "Analytics" in sidebar
+2. View 4 professional charts:
+   - Portfolio Distribution
+   - Profit vs Loss
+   - Stock Values
+   - Gain/Loss by Stock
+
+---
+
+## 🔧 Compilation
+
+If you need to recompile:
+
+```cmd
+javac -encoding UTF-8 -cp "lib/*" -d . src/com/portfolio/model/*.java src/com/portfolio/service/*.java src/com/portfolio/database/*.java src/com/portfolio/ui/PremiumStockDashboard.java
 ```
 
-Enjoy tracking your portfolio! 💼📊
-=======
-# Real-Time-Stock-Portfolio-Tracker
-IRP JAVA 
->>>>>>> f929ab51bad68ce0c8fba448bf931bf3543dafe6
+---
+
+## 📊 API Information
+
+**Alpha Vantage API**
+- Free tier: 5 calls/minute, 500 calls/day
+- API Key: Included in code
+- Used for: Real-time stock prices and historical data
+
+---
+
+## 💾 Database
+
+**SQLite Database** (`portfolio.db`)
+- Stores: Portfolio items, transactions, stock prices
+- Auto-created on first run
+- Persistent across sessions
+- To reset: Delete `portfolio.db` file
+
+---
+
+## 🎓 Project Requirements
+
+✅ **100% Pure Java** - No HTML, CSS, or JavaScript  
+✅ **Desktop Application** - Runs in window, not browser  
+✅ **Modern UI** - Professional dark theme with sidebar  
+✅ **Real-time Data** - API integration for stock prices  
+✅ **Database** - SQLite persistence  
+✅ **Charts** - JFreeChart integration  
+✅ **Indian Currency** - All prices in ₹ (Rupees)  
+
+---
+
+## 📚 Documentation
+
+- **PREMIUM-DASHBOARD-README.md** - Complete feature documentation
+- **WHATS-NEW-PREMIUM.md** - Comparison with previous versions
+- **PROJECT-STRUCTURE.md** - Detailed project structure
+- **INDEX.md** - Quick reference guide
+
+---
+
+## 🐛 Troubleshooting
+
+### Application won't start
+- Ensure all `.class` files are compiled
+- Check `lib/` folder has all JAR files
+- Recompile using command above
+
+### Prices not updating
+- Check internet connection
+- API has rate limits (wait 1 minute between refreshes)
+- Verify API key is valid
+
+### Database errors
+- Delete `portfolio.db` to start fresh
+- Application will recreate database automatically
+
+---
+
+## 📝 Notes
+
+- **Currency**: All prices displayed in Indian Rupees (₹)
+- **Theme**: Dark mode with purple accents (#667eea)
+- **Fonts**: Segoe UI (Windows), fallback to SansSerif
+- **Resolution**: Optimized for 1280x800 and above
+
+---
+
+## 🎉 Version
+
+**v2.1.0** - Premium Stock Dashboard  
+Pure Java Desktop Application
+
+---
+
+## 📧 Support
+
+For issues or questions, refer to:
+- PREMIUM-DASHBOARD-README.md (detailed guide)
+- WHATS-NEW-PREMIUM.md (feature list)
+- Source code comments (detailed explanations)
+
+---
+
+**Happy Trading! 📈**
