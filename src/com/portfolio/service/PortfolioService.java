@@ -6,6 +6,7 @@ import com.portfolio.model.Transaction; // Import Transaction class
 import java.util.ArrayList; // Import ArrayList to store lists of items
 import java.util.List; // Import List interface
 import java.util.ArrayList;
+import com.portfolio.model.PriceAlert;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -21,7 +22,7 @@ public class PortfolioService {
     private CurrencyService currencyService; // Service for live exchange rates
     private String baseCurrency = "INR"; // Default display currency
     private NotificationManager notificationManager; // NEW: Handles desktop/in-app alerts
-    // PriceAlert feature removed - class doesn't exist
+    private List<PriceAlert> priceAlerts; // Stores user-defined price alerts
 
     // Constructor - creates a new portfolio manager
     // Example: new PortfolioService(alphaVantageService)
@@ -33,7 +34,7 @@ public class PortfolioService {
         this.portfolioDAO = new com.portfolio.database.PortfolioDAO(); // Create database access object
         this.currencyService = new CurrencyService(); // Initialize currency service
         this.notificationManager = NotificationManager.getInstance(); // Initialize notification manager
-        // PriceAlert initialization removed
+        this.priceAlerts = new ArrayList<>(); // Initialize price alerts list
 
         // Load existing data from database when service starts
         loadFromDatabase();
@@ -474,7 +475,24 @@ public class PortfolioService {
                 }
             }
         }
-        // checkPriceAlerts() removed - PriceAlert class doesn't exist
+        checkPriceAlerts(symbol, newPrice);
+    }
+
+    public void addPriceAlert(PriceAlert alert) {
+        priceAlerts.add(alert);
+        System.out.println("🔔 Price alert set for " + alert.getSymbol() + " @ ₹" + alert.getTargetPrice());
+    }
+
+    private void checkPriceAlerts(String symbol, double currentPrice) {
+        for (PriceAlert alert : priceAlerts) {
+            if (alert.getSymbol().equalsIgnoreCase(symbol) && !alert.isTriggered()) {
+                if (alert.checkCondition(currentPrice)) {
+                    alert.setTriggered(true);
+                    notificationManager.showPriceAlert(symbol, alert.getTargetPrice(), currentPrice);
+                    System.out.println("🚨 ALERT TRIGGERED: " + symbol + " reached " + currentPrice);
+                }
+            }
+        }
     }
 
 
