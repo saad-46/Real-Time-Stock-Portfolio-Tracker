@@ -41,3 +41,17 @@ lib/vosk-*.jar
 out/
 target/
 build/
+
+# Screenshots and temporary scripts
+*.png
+*.ps1
+capture_*.ps1
+list_*.ps1
+find_*.ps1
+focus_*.ps1
+gui_screenshot*.png
+analytics_screenshot*.png
+
+# Python scripts (temporary)
+script.py
+fix_dashboard.py
