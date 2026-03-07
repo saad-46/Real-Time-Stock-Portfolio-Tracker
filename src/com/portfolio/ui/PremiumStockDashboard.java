@@ -368,7 +368,6 @@ public class PremiumStockDashboard extends JFrame {
                 { "\uD83D\uDCB3", "Transactions" },
                 { "\uD83D\uDCCA", "Analytics" },
                 { "\uD83D\uDCF0", "Market News" },
-                { "\uD83E\uDDE0", "AI Insights" },
                 { "\u2699\uFE0F", "Settings" }
         };
 
@@ -510,8 +509,6 @@ public class PremiumStockDashboard extends JFrame {
         headerContainer.add(topbar, BorderLayout.NORTH);
 
         MarketTickerPulse ticker = new MarketTickerPulse();
-        ticker.setPreferredSize(new Dimension(0, 35)); // Slightly larger height
-        ticker.setBackground(TOPBAR_BG());
         headerContainer.add(ticker, BorderLayout.CENTER); // Positioned between header and content
 
         main.add(headerContainer, BorderLayout.NORTH);
@@ -533,7 +530,6 @@ public class PremiumStockDashboard extends JFrame {
         contentArea.add(buildTransactionsPage(), "Transactions");
         contentArea.add(buildAnalyticsPage(), "Analytics");
         contentArea.add(buildMarketNewsPage(), "Market News");
-        contentArea.add(buildAIInsightsPage(), "AI Insights");
         contentArea.add(buildSettingsPage(), "Settings");
 
         if (cardLayout != null) {
@@ -1080,110 +1076,6 @@ public class PremiumStockDashboard extends JFrame {
         JPanel card = createCard("📈 Portfolio Performance");
         card.add(panel);
         return card;
-    }
-
-    private JPanel buildAIInsightsPage() {
-        JPanel page = new JPanel(new BorderLayout());
-        page.setBackground(BG);
-
-        JPanel content = new JPanel();
-        content.setBackground(BG);
-        content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
-        content.setBorder(new EmptyBorder(25, 25, 25, 25));
-
-        JPanel card = createCard("🧠 AI Smart Recommendations");
-        card.setLayout(new BorderLayout());
-
-        JTextPane insightArea = new JTextPane();
-        insightArea.setContentType("text/html");
-        insightArea.setEditable(false);
-        insightArea.setBackground(CARD_BG);
-        insightArea.setForeground(TEXT);
-        insightArea.setFont(FONT_BODY);
-        insightArea.setBorder(new EmptyBorder(15, 15, 15, 15));
-        insightArea
-                .setText("<html><body style='color: white; font-family: Segoe UI; font-size: 14pt; padding: 10px;'>" +
-                        "<h3 style='color: #667eea;'>Analyze your portfolio with AI...</h3>" +
-                        "Click the button below to generate personalized investment insights and sector analysis." +
-                        "</body></html>");
-
-        JScrollPane scroll = new JScrollPane(insightArea);
-        scroll.setBorder(new LineBorder(BORDER, 1, true));
-        scroll.setBackground(CARD_BG);
-        scroll.getViewport().setBackground(CARD_BG);
-        scroll.setPreferredSize(new Dimension(0, 500));
-
-        card.add(scroll, BorderLayout.CENTER);
-
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER, 0, 15));
-        bottomPanel.setOpaque(false);
-
-        RoundedButton genBtn = new RoundedButton("✨ Generate Insights", 15);
-        genBtn.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        genBtn.setBackground(ACCENT);
-        genBtn.setForeground(Color.WHITE);
-        genBtn.setPreferredSize(new Dimension(220, 50));
-        genBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
-        genBtn.addActionListener(e -> {
-            insightArea.setText(
-                    "<html><body style='color: white; font-family: Segoe UI; font-size: 14pt; padding: 10px;'>" +
-                            "<h3 style='color: #667eea;'>🤖 Analyzing Portfolio...</h3>" +
-                            "Consulting Groq AI for market trends and diversification analysis..." +
-                            "</body></html>");
-
-            new Thread(() -> {
-                try {
-                    StringBuilder ruleHtml = new StringBuilder();
-                    ruleHtml.append("<h2 style='color: #667eea;'>🧠 AI Portfolio Analysis</h2>");
-
-                    List<PortfolioItem> items = portfolioService.getPortfolioItems();
-                    if (items.isEmpty()) {
-                        ruleHtml.append("<p>Please add stocks to your portfolio to see detailed AI insights.</p>");
-                    } else {
-                        ruleHtml.append("<p style='color: #c0c8df;'>Your portfolio contains " + items.size()
-                                + " stocks. Use the AI Analysis button on individual stock pages for detailed insights.</p>");
-                    }
-
-                    String recommendations = groqAIService.getRecommendations();
-                    String groqHtml = recommendations
-                            .replace("### ", "<h3>")
-                            .replace("## ", "<h2>")
-                            .replace("# ", "<h1>")
-                            .replace("**", "<b>")
-                            .replace("* ", "<li>")
-                            .replace("\n", "<br>");
-
-                    SwingUtilities.invokeLater(() -> {
-                        insightArea.setText(
-                                "<html><body style='color: white; font-family: Segoe UI; font-size: 14pt; padding: 10px;'>"
-                                        + ruleHtml.toString()
-                                        + "<hr style='border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 20px 0;'>"
-                                        + "<h2 style='color: #667eea;'>🤖 Groq AI Detailed Analysis</h2>"
-                                        + groqHtml + "</body></html>");
-                    });
-                } catch (Exception ex) {
-                    SwingUtilities.invokeLater(() -> {
-                        insightArea.setText(
-                                "<html><body style='color: white; font-family: Segoe UI; font-size: 14pt; padding: 10px;'>"
-                                        +
-                                        "<h3 style='color: #f87171;'>❌ Error Generating Insights</h3>" +
-                                        ex.getMessage() + "</body></html>");
-                    });
-                }
-            }).start();
-        });
-
-        bottomPanel.add(genBtn);
-        card.add(bottomPanel, BorderLayout.SOUTH);
-
-        content.add(card);
-
-        JScrollPane scrollPane = new JScrollPane(content);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        page.add(scrollPane, BorderLayout.CENTER);
-
-        return page;
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -5778,100 +5670,254 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // MARKET PULSE TICKER (PHASE 4)
+    // MARKET PULSE TICKER (PHASE 4) - UPGRADED
     // ═══════════════════════════════════════════════════════════════════════
     class MarketTickerPulse extends JPanel {
-        private List<String> tickerItems = new ArrayList<>();
+        private class TickerItemData {
+            String symbol;
+            double price;
+            double change;
+            double changePercent;
+            int x;
+            int width;
+            boolean isHovered = false;
+            Color flashColor = null;
+            long flashStartTime = 0;
+        }
+
+        private List<TickerItemData> tickerItems = new ArrayList<>();
         private float scrollX = 0;
         private javax.swing.Timer tickerTimer;
         private javax.swing.Timer dataRefreshTimer;
+        private boolean isPaused = false;
+        private final Font tickerFont = new Font("Inter", Font.BOLD, 13);
+        private final Font iconFont = new Font("Segoe UI", Font.BOLD, 12);
+        private final String[] DEFAULT_SYMBOLS = { "BTC", "ETH", "AAPL", "TSLA", "SPY", "NIFTY", "SENSEX" };
 
         public MarketTickerPulse() {
-            setOpaque(false);
-            setPreferredSize(new Dimension(800, 25));
-            refreshData();
+            setOpaque(true);
+            setBackground(new Color(30, 41, 59)); // #1E293B
+            setPreferredSize(new Dimension(0, 42)); // 42px height for professional look
 
-            tickerTimer = new javax.swing.Timer(30, e -> {
-                scrollX -= 1.2f;
-                // Simplified reset logic for smooth looping
-                if (scrollX < -3000)
-                    scrollX = getWidth();
+            refreshData(true); // Initial load
+
+            tickerTimer = new javax.swing.Timer(16, e -> { // ~60 FPS
+                if (!isPaused && !tickerItems.isEmpty()) {
+                    scrollX -= 1.0f; // Speed
+
+                    // Total width calculation
+                    int totalWidth = 0;
+                    if (!tickerItems.isEmpty()) {
+                        TickerItemData last = tickerItems.get(tickerItems.size() - 1);
+                        totalWidth = last.x + last.width + 50; // 50 is padding
+                    }
+
+                    if (scrollX < -totalWidth && totalWidth > 0) {
+                        scrollX = getWidth();
+                    }
+                }
                 repaint();
             });
             tickerTimer.start();
 
-            // Refresh data every 10 seconds (simulating live feed)
-            dataRefreshTimer = new javax.swing.Timer(10000, e -> refreshData());
+            // Refresh data every 30 seconds
+            dataRefreshTimer = new javax.swing.Timer(30000, e -> refreshData(false));
             dataRefreshTimer.start();
+
+            addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseEntered(MouseEvent e) {
+                    isPaused = true;
+                }
+
+                @Override
+                public void mouseExited(MouseEvent e) {
+                    isPaused = false;
+                    for (TickerItemData item : tickerItems)
+                        item.isHovered = false;
+                    setCursor(Cursor.getDefaultCursor());
+                    repaint();
+                }
+
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    for (TickerItemData item : tickerItems) {
+                        if (item.isHovered) {
+                            showDetailedAnalysis(item.symbol);
+                            break;
+                        }
+                    }
+                }
+            });
+
+            addMouseMotionListener(new MouseMotionAdapter() {
+                @Override
+                public void mouseMoved(MouseEvent e) {
+                    boolean rep = false;
+                    boolean anyHovered = false;
+                    for (TickerItemData item : tickerItems) {
+                        boolean wasHovered = item.isHovered;
+                        int screenX = (int) scrollX + item.x;
+                        item.isHovered = (e.getX() >= screenX - 5 && e.getX() <= screenX + item.width + 5);
+                        if (item.isHovered)
+                            anyHovered = true;
+                        if (wasHovered != item.isHovered)
+                            rep = true;
+                    }
+                    if (rep) {
+                        setCursor(anyHovered ? new Cursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+                        repaint();
+                    }
+                }
+            });
         }
 
-        private void refreshData() {
-            List<String> newData = new ArrayList<>();
-            Set<String> symbols = new HashSet<>();
+        private void refreshData(boolean initial) {
+            Set<String> symbols = new LinkedHashSet<>();
+            symbols.addAll(Arrays.asList(DEFAULT_SYMBOLS));
 
-            // Add portfolio symbols
+            // Add portfolio symbols too
             for (PortfolioItem item : portfolioService.getPortfolioItems()) {
                 symbols.add(item.getStock().getSymbol());
             }
-            // Add watchlist symbols
-            for (Stock s : portfolioService.getWatchlist()) {
-                symbols.add(s.getSymbol());
-            }
 
-            // Always add some major indices for a professional look
-            symbols.add("BTC");
-            symbols.add("ETH");
-            symbols.add("SPY");
+            Random rand = new Random();
+            long now = System.currentTimeMillis();
 
-            for (String sym : symbols) {
-                double price = 0;
-                // Try to get price from service, or use deterministic random for others
-                try {
-                    PortfolioItem item = portfolioService.getPortfolioItems().stream()
-                            .filter(i -> i.getStock().getSymbol().equalsIgnoreCase(sym))
-                            .findFirst().orElse(null);
-                    if (item != null) {
-                        price = item.getStock().getCurrentPrice();
-                    } else {
-                        // Deterministic random price for mock/index symbols
-                        Random r = new Random(sym.hashCode());
-                        price = 100 + r.nextDouble() * 1000;
-                    }
-                } catch (Exception e) {
+            if (initial) {
+                tickerItems.clear();
+                for (String sym : symbols) {
+                    TickerItemData item = new TickerItemData();
+                    item.symbol = sym;
+                    updateItemPrice(item, sym, rand);
+                    tickerItems.add(item);
                 }
-
-                // Simulate a daily change
-                Random rand = new Random();
-                double change = (rand.nextDouble() - 0.45) * 2.5; // -1.1% to +1.4%
-                String indicator = change >= 0 ? "▲" : "▼";
-
-                String entry = String.format("%s %s %.2f %s %.1f%%",
-                        sym, getCurrencySymbol(), price, indicator, Math.abs(change));
-                newData.add(entry);
-            }
-
-            if (newData.isEmpty()) {
-                tickerItems = Arrays.asList("STOCKVAULT PREMIUM LIVE FEED ACTIVE   •   WAITING FOR DATA");
             } else {
-                tickerItems = newData;
+                for (TickerItemData item : tickerItems) {
+                    double oldPrice = item.price;
+                    updateItemPrice(item, item.symbol, rand);
+                    if (oldPrice != item.price) {
+                        item.flashColor = item.price > oldPrice ? new Color(34, 197, 94, 100)
+                                : new Color(239, 68, 68, 100);
+                        item.flashStartTime = now;
+                    }
+                }
             }
+        }
+
+        private void updateItemPrice(TickerItemData item, String sym, Random rand) {
+            double price = 0;
+            try {
+                PortfolioItem pItem = portfolioService.getPortfolioItems().stream()
+                        .filter(i -> i.getStock().getSymbol().equalsIgnoreCase(sym))
+                        .findFirst().orElse(null);
+                if (pItem != null) {
+                    price = pItem.getStock().getCurrentPrice();
+                } else {
+                    Random r = new Random(sym.hashCode());
+                    price = 100 + r.nextDouble() * 1000;
+                }
+            } catch (Exception e) {
+            }
+
+            // Simulate slight movements
+            double maxMove = price * 0.005; // 0.5% max random move
+            item.price = price + (rand.nextDouble() - 0.5) * maxMove;
+
+            // Simulated daily change
+            double dailyChange = (new Random(sym.hashCode()).nextDouble() - 0.45) * 5.0; // stable random
+            dailyChange += (rand.nextDouble() - 0.5) * 0.5; // slight fluctuation
+
+            item.changePercent = dailyChange;
+            item.change = item.price * (dailyChange / 100.0);
         }
 
         @Override
         protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
             Graphics2D g2 = (Graphics2D) g.create();
             g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             g2.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
-            g2.setFont(new Font("Inter", Font.BOLD, 12));
 
-            String fullText = String.join("     •     ", tickerItems);
+            FontMetrics fm = g2.getFontMetrics(tickerFont);
+            FontMetrics iconFm = g2.getFontMetrics(iconFont);
+            int currentX = 0;
 
-            // Subtle background glow for ticker
-            g2.setColor(new Color(0, 255, 127, 20));
-            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 10, 10);
+            long now = System.currentTimeMillis();
 
-            g2.setColor(GREEN);
-            g2.drawString(fullText, scrollX, 18);
+            for (int i = 0; i < tickerItems.size(); i++) {
+                TickerItemData item = tickerItems.get(i);
+
+                String priceStr = String.format("%s%.2f", getCurrencySymbol(), item.price);
+                String pctStr = String.format("%.2f%%", Math.abs(item.changePercent));
+                String indicator = item.changePercent >= 0 ? "▲" : "▼";
+                Color color = item.changePercent >= 0 ? new Color(34, 197, 94) : new Color(239, 68, 68); // #22C55E :
+                                                                                                         // #EF4444
+
+                int symW = fm.stringWidth(item.symbol + " ");
+                int priceW = fm.stringWidth(priceStr + " ");
+                int indW = iconFm.stringWidth(indicator + " ");
+                int pctW = fm.stringWidth(pctStr);
+
+                item.x = currentX;
+                item.width = symW + priceW + indW + pctW + 10;
+
+                int drawX = (int) scrollX + currentX;
+
+                // Do not draw if way out of bounds
+                if (drawX + item.width > 0 && drawX < getWidth()) {
+                    // Hover highlight
+                    if (item.isHovered) {
+                        g2.setColor(new Color(255, 255, 255, 20));
+                        g2.fillRoundRect(drawX - 5, getHeight() / 2 - 14, item.width + 10, 28, 6, 6);
+                    }
+
+                    // Flash effect on price update
+                    if (item.flashStartTime > 0) {
+                        long elapsed = now - item.flashStartTime;
+                        if (elapsed < 1000) {
+                            int alpha = (int) (item.flashColor.getAlpha() * (1.0 - (elapsed / 1000.0)));
+                            g2.setColor(new Color(item.flashColor.getRed(), item.flashColor.getGreen(),
+                                    item.flashColor.getBlue(), Math.max(0, alpha)));
+                            g2.fillRoundRect(drawX - 5, getHeight() / 2 - 14, item.width + 10, 28, 6, 6);
+                        } else {
+                            item.flashStartTime = 0;
+                        }
+                    }
+
+                    int textY = getHeight() / 2 + fm.getAscent() / 2 - 2;
+
+                    // Symbol
+                    g2.setFont(tickerFont);
+                    g2.setColor(item.isHovered ? Color.WHITE : new Color(226, 232, 240)); // #E2E8F0
+                    g2.drawString(item.symbol, drawX, textY);
+                    drawX += symW;
+
+                    // Price
+                    g2.setColor(new Color(226, 232, 240));
+                    g2.drawString(priceStr, drawX, textY);
+                    drawX += priceW;
+
+                    // Indicator
+                    g2.setFont(iconFont);
+                    g2.setColor(color);
+                    g2.drawString(indicator, drawX, textY - 1); // slight tweak for arrow alignment
+                    drawX += indW;
+
+                    // Percent
+                    g2.setFont(tickerFont);
+                    g2.drawString(pctStr, drawX, textY);
+                    drawX += pctW;
+
+                    // Separator
+                    if (i < tickerItems.size() - 1) {
+                        g2.setColor(new Color(100, 116, 139)); // #64748B separator color
+                        g2.drawString(" • ", drawX + 15, textY);
+                    }
+                }
+
+                currentX += item.width + 50; // spacing between items
+            }
             g2.dispose();
         }
     }
