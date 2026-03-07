@@ -158,6 +158,9 @@ public class NewsService {
                 int urlIdx = json.indexOf("\"url\":", titleIdx);
                 String articleUrl = urlIdx != -1 ? extractJsonString(json, urlIdx) : "";
 
+                int imageIdx = json.indexOf("\"image\":", titleIdx);
+                String imageUrl = imageIdx != -1 ? extractJsonString(json, imageIdx) : "";
+
                 // Try to extract source name
                 int sourceIdx = json.indexOf("\"source\":", titleIdx);
                 String sourceName = "News";
@@ -174,6 +177,7 @@ public class NewsService {
                     NewsItem item = new NewsItem(title, category, sentiment, articleUrl);
                     item.setSource(sourceName);
                     item.setDescription(description);
+                    item.setImageUrl(imageUrl);
                     items.add(item);
                 }
 
@@ -211,6 +215,9 @@ public class NewsService {
                 int descIdx = json.indexOf("\"description\":", titleIdx);
                 String description = descIdx != -1 ? extractJsonString(json, descIdx) : "";
 
+                int imageIdx = json.indexOf("\"image_url\":", titleIdx);
+                String imageUrl = imageIdx != -1 ? extractJsonString(json, imageIdx) : "";
+
                 int sourceIdx = json.indexOf("\"source_id\":", titleIdx);
                 String sourceName = sourceIdx != -1 ? extractJsonString(json, sourceIdx) : "News";
 
@@ -220,6 +227,7 @@ public class NewsService {
                     NewsItem item = new NewsItem(title, category, sentiment, articleUrl);
                     item.setSource(sourceName);
                     item.setDescription(description);
+                    item.setImageUrl(imageUrl);
                     items.add(item);
                 }
 

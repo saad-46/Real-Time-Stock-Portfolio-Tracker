@@ -36,6 +36,7 @@ import org.jfree.data.time.Day;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.NumberAxis;
 import java.text.SimpleDateFormat;
+import java.time.format.DateTimeFormatter;
 import java.util.Calendar;
 import java.util.Random;
 
@@ -363,6 +364,7 @@ public class PremiumStockDashboard extends JFrame {
         String[][] items = {
                 { "\uD83C\uDFE0", "Dashboard" },
                 { "\uD83D\uDCBC", "My Portfolio" },
+                { "\uD83E\uDDF1", "My Wallet" },
                 { "\uD83D\uDCC8", "Market" },
                 { "\u2B50", "Watchlist" },
                 { "\uD83D\uDCB3", "Transactions" },
@@ -525,6 +527,7 @@ public class PremiumStockDashboard extends JFrame {
         contentArea.removeAll();
         contentArea.add(buildDashboardPage(), "Dashboard");
         contentArea.add(buildPortfolioPage(), "My Portfolio");
+        contentArea.add(buildWalletPage(), "My Wallet");
         contentArea.add(buildMarketPage(), "Market");
         contentArea.add(buildWatchlistPage(), "Watchlist");
         contentArea.add(buildTransactionsPage(), "Transactions");
@@ -1386,7 +1389,8 @@ public class PremiumStockDashboard extends JFrame {
                     java.net.URL url = new java.net.URL(n.getImageUrl());
                     java.awt.Image image = javax.imageio.ImageIO.read(url);
                     if (image != null) {
-                        java.awt.Image scaled = image.getScaledInstance(400, 200, java.awt.Image.SCALE_SMOOTH);
+                        // Adjust to height 180px as requested, width scales
+                        java.awt.Image scaled = image.getScaledInstance(450, 180, java.awt.Image.SCALE_SMOOTH);
                         SwingUtilities.invokeLater(() -> {
                             imageLabel.setIcon(new ImageIcon(scaled));
                             imageLabel.setText("");
@@ -1491,8 +1495,8 @@ public class PremiumStockDashboard extends JFrame {
                 java.io.File bgFile = new java.io.File("src/resources/images/default_market_bg.png");
                 if (bgFile.exists()) {
                     java.awt.Image image = javax.imageio.ImageIO.read(bgFile);
-                    int w = isBanner ? 1200 : 400;
-                    int h = isBanner ? 300 : 200;
+                    int w = isBanner ? 1200 : 450;
+                    int h = isBanner ? 300 : 180;
                     java.awt.Image scaled = image.getScaledInstance(w, h, java.awt.Image.SCALE_SMOOTH);
                     imageLabel.setIcon(new ImageIcon(scaled));
                     imageLabel.setText("");
@@ -1570,6 +1574,455 @@ public class PremiumStockDashboard extends JFrame {
         scroll.setBorder(null);
         dialog.add(scroll, BorderLayout.CENTER);
         dialog.setVisible(true);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // MY WALLET PAGE
+    // ═══════════════════════════════════════════════════════════════════════
+    private JPanel buildWalletPage() {
+        JPanel walletContent = new JPanel(new BorderLayout());
+        walletContent.setOpaque(false);
+        walletContent.setBorder(new EmptyBorder(30, 40, 30, 40));
+
+        // Header
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        JLabel title = new JLabel("\uD83E\uDDF1 My Wallet");
+        title.setFont(new Font("Segoe UI", Font.BOLD, 28));
+        title.setForeground(TEXT());
+        headerPanel.add(title, BorderLayout.WEST);
+
+        JPanel actionPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 15, 0));
+        actionPanel.setOpaque(false);
+
+        // Refresh Button
+        JButton refreshBtn = new JButton("🔄 Refresh");
+        refreshBtn.setBackground(Color.decode("#334155"));
+        refreshBtn.setForeground(Color.decode("#E2E8F0"));
+        refreshBtn.setFocusPainted(false);
+        refreshBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        refreshBtn.putClientProperty("JButton.arc", 20);
+        refreshBtn.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                refreshBtn.setBackground(Color.decode("#475569"));
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                refreshBtn.setBackground(Color.decode("#334155"));
+            }
+        });
+        refreshBtn.addActionListener(e -> refreshAllViews());
+
+        // Pay Tax Button
+        JButton taxPortalBtn = new JButton("🧾 Pay Tax on Government Portal");
+        taxPortalBtn.setBackground(Color.decode("#F59E0B"));
+        taxPortalBtn.setForeground(Color.BLACK);
+        taxPortalBtn.setFocusPainted(false);
+        taxPortalBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        taxPortalBtn.putClientProperty("JButton.arc", 20);
+        taxPortalBtn.addActionListener(e -> {
+            try {
+                java.awt.Desktop.getDesktop().browse(new java.net.URI("https://www.incometax.gov.in/"));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        // Export Wallet Statement Button
+        JButton exportBtn = new JButton("📥 Export Wallet Statement");
+        exportBtn.setBackground(Color.decode("#3B82F6"));
+        exportBtn.setForeground(Color.WHITE);
+        exportBtn.setFocusPainted(false);
+        exportBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        exportBtn.putClientProperty("JButton.arc", 20);
+        exportBtn.addActionListener(e -> exportWalletStatement());
+
+        actionPanel.add(refreshBtn);
+        actionPanel.add(taxPortalBtn);
+        actionPanel.add(exportBtn);
+        headerPanel.add(actionPanel, BorderLayout.EAST);
+
+        walletContent.add(headerPanel, BorderLayout.NORTH);
+
+        // Scrollable Grid
+        JPanel scrollContent = new JPanel(new GridBagLayout());
+        scrollContent.setOpaque(false);
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        gbc.weightx = 1.0;
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.insets = new Insets(20, 0, 20, 0);
+
+        // 1. Balance Summary Row (4 metric cards in horizontal grid)
+        JPanel summaryRow = new JPanel(new GridLayout(1, 4, 20, 0));
+        summaryRow.setOpaque(false);
+
+        WalletService ws = portfolioService.getWalletService();
+        double balance = ws.getBalance();
+        double deposited = ws.getTotalDeposited();
+        double withdrawn = ws.getTotalWithdrawn();
+
+        summaryRow.add(createFintechWalletCard("Wallet Balance", formatCurrency(balance), "Available for trading",
+                "💰", Color.decode("#3B82F6")));
+        summaryRow.add(createFintechWalletCard("Total Deposited", formatCurrency(deposited), "All time funding",
+                "📈", Color.decode("#22C55E")));
+        summaryRow.add(createFintechWalletCard("Total Withdrawn", formatCurrency(withdrawn), "All time cashouts",
+                "📉", Color.decode("#EF4444")));
+        summaryRow.add(createFintechWalletCard("Available for Trading", formatCurrency(balance), "Verified funds",
+                "💳", Color.decode("#8B5CF6")));
+
+        scrollContent.add(summaryRow, gbc);
+
+        // Warning if low balance
+        if (balance < 1000) {
+            gbc.gridy++;
+            gbc.insets = new Insets(0, 0, 20, 0);
+            JPanel warningPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+            warningPanel.setOpaque(false);
+            JLabel wLabel = new JLabel("⚠ Low wallet balance. Add funds to continue trading without interruptions.");
+            wLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+            wLabel.setForeground(Color.decode("#EF4444"));
+            warningPanel.add(wLabel);
+            scrollContent.add(warningPanel, gbc);
+        }
+
+        gbc.gridy++;
+        gbc.insets = new Insets(20, 0, 20, 0);
+
+        // ------------- ADD / WITHDRAW FUNDS FORMS -------------
+        JPanel formsRow = new JPanel(new GridLayout(1, 2, 20, 0));
+        formsRow.setOpaque(false);
+
+        // Add Funds Card
+        JPanel addFundsCard = new JPanel();
+        addFundsCard.setBackground(Color.decode("#1E293B"));
+        addFundsCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        addFundsCard.setLayout(new BoxLayout(addFundsCard, BoxLayout.Y_AXIS));
+
+        JLabel addTitle = new JLabel("💰 Add Funds");
+        addTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        addTitle.setForeground(Color.WHITE);
+        addFundsCard.add(addTitle);
+        addFundsCard.add(Box.createVerticalStrut(15));
+
+        JPanel pMethodPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        pMethodPanel.setOpaque(false);
+        JLabel mLabel = new JLabel("Payment Method: ");
+        mLabel.setForeground(Color.WHITE);
+        pMethodPanel.add(mLabel);
+        String[] methods = { "UPI", "Debit Card", "Credit Card", "Net Banking" };
+        JComboBox<String> methodCombo = new JComboBox<>(methods);
+        pMethodPanel.add(methodCombo);
+        addFundsCard.add(pMethodPanel);
+
+        JPanel pAmtPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        pAmtPanel.setOpaque(false);
+        JLabel aLabel = new JLabel("Amount (₹): ");
+        aLabel.setForeground(Color.WHITE);
+        pAmtPanel.add(aLabel);
+        JTextField addAmtField = new JTextField(10);
+        pAmtPanel.add(addAmtField);
+        addFundsCard.add(pAmtPanel);
+
+        JPanel pBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        pBtnPanel.setOpaque(false);
+        JButton addMoneyBtn = new JButton("➕ Add Money");
+        addMoneyBtn.setBackground(Color.decode("#22C55E"));
+        addMoneyBtn.setForeground(Color.WHITE);
+        addMoneyBtn.setFocusPainted(false);
+        addMoneyBtn.addActionListener(e -> {
+            try {
+                double amt = Double.parseDouble(addAmtField.getText());
+                String method = (String) methodCombo.getSelectedItem();
+                if (ws.addFunds(amt, method)) {
+                    JOptionPane.showMessageDialog(this, "₹" + amt + " successfully added via " + method + ".");
+                    refreshAllViews(); // Refresh view
+                } else {
+                    JOptionPane.showMessageDialog(this, "Invalid amount.", "Error", JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Please enter a valid amount.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        pBtnPanel.add(addMoneyBtn);
+        addFundsCard.add(pBtnPanel);
+
+        formsRow.add(addFundsCard);
+
+        JPanel withdrawCard = new JPanel();
+        withdrawCard.setBackground(Color.decode("#1E293B"));
+        withdrawCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        withdrawCard.setLayout(new BoxLayout(withdrawCard, BoxLayout.Y_AXIS));
+
+        JLabel wTitle = new JLabel("💸 Withdraw Funds");
+        wTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        wTitle.setForeground(Color.WHITE);
+        withdrawCard.add(wTitle);
+        withdrawCard.add(Box.createVerticalStrut(15));
+
+        JPanel wAmtPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        wAmtPanel.setOpaque(false);
+        JLabel waLabel = new JLabel("Amount (₹): ");
+        waLabel.setForeground(Color.WHITE);
+        wAmtPanel.add(waLabel);
+        JTextField withdrawAmtField = new JTextField(10);
+        wAmtPanel.add(withdrawAmtField);
+        withdrawCard.add(wAmtPanel);
+
+        JPanel wBtnPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        wBtnPanel.setOpaque(false);
+        JButton withdrawBtn = new JButton("➖ Withdraw");
+        withdrawBtn.setBackground(Color.decode("#EF4444"));
+        withdrawBtn.setForeground(Color.WHITE);
+        withdrawBtn.setFocusPainted(false);
+        withdrawBtn.addActionListener(e -> {
+            try {
+                double amt = Double.parseDouble(withdrawAmtField.getText());
+                if (amt > 100000) {
+                    JOptionPane.showMessageDialog(this, "Maximum withdrawal per transaction is ₹1,00,000.",
+                            "Limit Exceeded", JOptionPane.ERROR_MESSAGE);
+                    return;
+                }
+                if (ws.withdrawFunds(amt)) {
+                    JOptionPane.showMessageDialog(this, "₹" + amt + " successfully withdrawn to your bank account.");
+                    refreshAllViews(); // Refresh view
+                } else {
+                    JOptionPane.showMessageDialog(this, "Insufficient funds or invalid amount.", "Error",
+                            JOptionPane.ERROR_MESSAGE);
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Please enter a valid amount.", "Error", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        wBtnPanel.add(withdrawBtn);
+        withdrawCard.add(wBtnPanel);
+
+        formsRow.add(withdrawCard);
+        scrollContent.add(formsRow, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(20, 0, 20, 0);
+
+        // ------------- ACTIVITY CHART & HISTORY -------------
+        JPanel activityRow = new JPanel(new BorderLayout(20, 0));
+        activityRow.setOpaque(false);
+        activityRow.setPreferredSize(new Dimension(0, 350));
+
+        // Activity Chart
+        JPanel chartCard = new JPanel(new BorderLayout());
+        chartCard.setBackground(Color.decode("#1E293B"));
+        chartCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        JLabel cTitle = new JLabel("📈 Balance History");
+        cTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        cTitle.setForeground(Color.WHITE);
+        chartCard.add(cTitle, BorderLayout.NORTH);
+
+        List<WalletTransaction> history = ws.getTransactions();
+        DefaultCategoryDataset dataset = new DefaultCategoryDataset();
+        if (history != null && !history.isEmpty()) {
+            int count = 0;
+            // Show last transactions in reverse order (oldest -> newest for graph)
+            for (int i = history.size() - 1; i >= 0 && count < 15; i--) {
+                WalletTransaction tx = history.get(i);
+                String timeLabel = tx.getTimestamp().format(DateTimeFormatter.ofPattern("MMM dd HH:mm"));
+                dataset.addValue(tx.getBalanceAfter(), "Balance", timeLabel);
+                count++;
+            }
+        }
+
+        JFreeChart balanceChart = ChartFactory.createLineChart(
+                "", "", "", // No titles needed
+                dataset,
+                PlotOrientation.VERTICAL,
+                false, true, false);
+        balanceChart.setBackgroundPaint(Color.decode("#1E293B"));
+        CategoryPlot plot = balanceChart.getCategoryPlot();
+        plot.setBackgroundPaint(Color.decode("#1E293B"));
+        plot.setDomainGridlinePaint(Color.decode("#2A3348"));
+        plot.setRangeGridlinePaint(Color.decode("#2A3348"));
+        plot.getRenderer().setSeriesPaint(0, Color.decode("#3B82F6"));
+        plot.getDomainAxis().setTickLabelPaint(Color.decode("#94A3B8"));
+        plot.getRangeAxis().setTickLabelPaint(Color.decode("#94A3B8"));
+
+        ChartPanel chartPanel = new ChartPanel(balanceChart);
+        chartPanel.setOpaque(false);
+        chartPanel.setBackground(Color.decode("#1E293B"));
+        chartCard.add(chartPanel, BorderLayout.CENTER);
+
+        // History Table
+        JPanel tableCard = new JPanel(new BorderLayout());
+        tableCard.setBackground(Color.decode("#1E293B"));
+        tableCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        JLabel tTitle = new JLabel("📋 Recent Transactions");
+        tTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        tTitle.setForeground(Color.WHITE);
+        tableCard.add(tTitle, BorderLayout.NORTH);
+
+        String[] cols = { "Type", "Amount", "Balance", "Date" };
+        DefaultTableModel model = new DefaultTableModel(cols, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return false;
+            }
+        };
+        if (history != null) {
+            for (WalletTransaction t : history) {
+                String typeStr = t.getType();
+                String amtStr = (typeStr.contains("DEPOSIT") || typeStr.contains("SALE"))
+                        ? "+" + formatCurrency(t.getAmount())
+                        : "-" + formatCurrency(t.getAmount());
+                model.addRow(new Object[] {
+                        typeStr,
+                        amtStr,
+                        formatCurrency(t.getBalanceAfter()),
+                        t.getTimestamp().format(DateTimeFormatter.ofPattern("MMM dd HH:mm"))
+                });
+            }
+        }
+
+        JTable historyTable = new JTable(model);
+        historyTable.setBackground(Color.decode("#1E293B"));
+        historyTable.setForeground(Color.WHITE);
+        historyTable.getTableHeader().setBackground(Color.decode("#0F172A"));
+        historyTable.getTableHeader().setForeground(Color.decode("#94A3B8"));
+        historyTable.getTableHeader().setFont(new Font("Segoe UI", Font.BOLD, 12));
+        historyTable.setRowHeight(30);
+        historyTable.setShowGrid(false);
+
+        JScrollPane tableScroll = new JScrollPane(historyTable);
+        tableScroll.getViewport().setBackground(Color.decode("#1E293B"));
+        tableScroll.setBorder(BorderFactory.createEmptyBorder(10, 0, 0, 0));
+        tableCard.add(tableScroll, BorderLayout.CENTER);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, chartCard, tableCard);
+        splitPane.setResizeWeight(0.6);
+        splitPane.setDividerSize(0);
+        splitPane.setBorder(null);
+        splitPane.setOpaque(false);
+        activityRow.add(splitPane, BorderLayout.CENTER);
+
+        scrollContent.add(activityRow, gbc);
+
+        gbc.gridy++;
+        gbc.insets = new Insets(20, 0, 20, 0);
+
+        // ------------- TAX ESTIMATION -------------
+        JPanel taxRow = new JPanel(new GridLayout(1, 2, 20, 0));
+        taxRow.setOpaque(false);
+
+        // Tax Estimator Card
+        JPanel taxCard = new JPanel();
+        taxCard.setBackground(Color.decode("#1E293B"));
+        taxCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        taxCard.setLayout(new BoxLayout(taxCard, BoxLayout.Y_AXIS));
+
+        JLabel taxTitle = new JLabel("⚖ Estimated Tax on Profits");
+        taxTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        taxTitle.setForeground(Color.WHITE);
+        taxCard.add(taxTitle);
+        taxCard.add(Box.createVerticalStrut(10));
+
+        // Simplified tax calculation for demo (15% STCG on profits this year)
+        double totalProfits = portfolioService.calculateCurrentValue() - portfolioService.calculateTotalInvestment();
+        double estimatedTax = totalProfits > 0 ? totalProfits * 0.15 : 0;
+
+        JLabel taxVal = new JLabel(formatCurrency(estimatedTax));
+        taxVal.setFont(new Font("Segoe UI", Font.BOLD, 28));
+        taxVal.setForeground(Color.decode("#FBB524"));
+        taxCard.add(taxVal);
+
+        JLabel taxDesc = new JLabel("Short Term Capital Gains (STCG) @ 15%");
+        taxDesc.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        taxDesc.setForeground(Color.decode("#94A3B8"));
+        taxCard.add(taxDesc);
+        taxCard.add(Box.createVerticalStrut(15));
+
+        JButton payTaxBtn = new JButton("Pay Tax from Wallet");
+        payTaxBtn.setBackground(Color.decode("#FBB524"));
+        payTaxBtn.setForeground(Color.BLACK);
+        payTaxBtn.setFocusPainted(false);
+        payTaxBtn.addActionListener(e -> {
+            if (estimatedTax <= 0) {
+                JOptionPane.showMessageDialog(this, "No taxes due on current profits.");
+                return;
+            }
+            if (ws.withdrawFunds(estimatedTax)) {
+                JOptionPane.showMessageDialog(this,
+                        "₹" + String.format("%.2f", estimatedTax) + " paid towards STCG Tax from Wallet.");
+                refreshAllViews();
+            } else {
+                JOptionPane.showMessageDialog(this, "Insufficient wallet balance to pay tax.", "Error",
+                        JOptionPane.ERROR_MESSAGE);
+            }
+        });
+        taxCard.add(payTaxBtn);
+        taxRow.add(taxCard);
+
+        // Security / Info Card
+        JPanel infoCard = new JPanel();
+        infoCard.setBackground(Color.decode("#1E293B"));
+        infoCard.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createLineBorder(Color.decode("#2A3348")),
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)));
+        infoCard.setLayout(new BoxLayout(infoCard, BoxLayout.Y_AXIS));
+
+        JLabel infoTitle = new JLabel("🔒 Secure Wallet");
+        infoTitle.setFont(new Font("Segoe UI", Font.BOLD, 18));
+        infoTitle.setForeground(Color.WHITE);
+        infoCard.add(infoTitle);
+        infoCard.add(Box.createVerticalStrut(10));
+
+        JLabel infoDesc1 = new JLabel(
+                "<html>This wallet is protected by AES-256 encryption.<br>All deposits and withdrawals are subject to AML verification.</html>");
+        infoDesc1.setFont(new Font("Segoe UI", Font.PLAIN, 13));
+        infoDesc1.setForeground(Color.decode("#94A3B8"));
+        infoCard.add(infoDesc1);
+        infoCard.add(Box.createVerticalStrut(15));
+
+        JLabel infoDesc2 = new JLabel("Note: Tax payments are non-refundable and deposited directly to govt portals.");
+        infoDesc2.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        infoDesc2.setForeground(Color.decode("#94A3B8"));
+        infoCard.add(infoDesc2);
+
+        taxRow.add(infoCard);
+        scrollContent.add(taxRow, gbc);
+
+        // Add dummy padding at bottom
+        gbc.gridy++;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.BOTH;
+        JPanel glue = new JPanel();
+        glue.setOpaque(false);
+        scrollContent.add(glue, gbc);
+
+        JScrollPane scrollPane = new JScrollPane(scrollContent, JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED,
+                JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
+        scrollPane.setBorder(BorderFactory.createEmptyBorder(20, 0, 0, 0));
+        scrollPane.setOpaque(false);
+        scrollPane.getViewport().setOpaque(false);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
+        scrollPane.getVerticalScrollBar().setPreferredSize(new Dimension(8, 0));
+
+        walletContent.add(scrollPane, BorderLayout.CENTER);
+        return walletContent;
+    }
+
+    private void showWalletExportOptions() {
+        // Placeholder for now
+        JOptionPane.showMessageDialog(this, "Export function coming soon.");
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -2016,9 +2469,25 @@ public class PremiumStockDashboard extends JFrame {
 
         JButton watchBtn = createActionBtn("⭐ " + (isInWatchlist ? "In Watchlist" : "Add to Watchlist"), isInWatchlist);
         watchBtn.addActionListener(e -> {
-            boolean isAdded = toggleWatchlist(symbol);
-            watchBtn.setText("⭐ " + (isAdded ? "In Watchlist" : "Add to Watchlist"));
-            watchBtn.setForeground(isAdded ? Color.YELLOW : TEXT_DIM());
+            boolean alreadyIn = portfolioService.getWatchlist().stream()
+                    .anyMatch(s -> s.getSymbol().equalsIgnoreCase(symbol));
+
+            if (alreadyIn) {
+                JOptionPane.showMessageDialog(this, "This stock is already in your watchlist.", "Watchlist",
+                        JOptionPane.INFORMATION_MESSAGE);
+                navigate("Watchlist");
+                return;
+            }
+
+            boolean added = portfolioService.addToWatchlist(symbol, name);
+            if (added) {
+                refreshAllViews();
+                navigate("Watchlist");
+            } else {
+                JOptionPane.showMessageDialog(this, "This stock is already in your watchlist.", "Watchlist",
+                        JOptionPane.INFORMATION_MESSAGE);
+                navigate("Watchlist");
+            }
         });
 
         JButton aiBtn = createGradientBtn("🧠 AI Insights");
@@ -2782,6 +3251,8 @@ public class PremiumStockDashboard extends JFrame {
     // ═══════════════════════════════════════════════════════════════════════
 
     private JPanel buildWatchlistPage() {
+        java.util.List<Stock> watchlist = portfolioService.getWatchlist();
+        // Updated Watchlist Page Implementation
         JPanel page = new JPanel(new BorderLayout());
         page.setBackground(BG());
 
@@ -2789,6 +3260,57 @@ public class PremiumStockDashboard extends JFrame {
         content.setBackground(BG());
         content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
         content.setBorder(new EmptyBorder(25, 25, 25, 25));
+
+        // Header Panel with Title and Refresh
+        JPanel headerPanel = new JPanel(new BorderLayout());
+        headerPanel.setOpaque(false);
+        headerPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50));
+
+        JLabel titleLbl = new JLabel("🧱 My Watchlist");
+        titleLbl.setFont(FONT_HEADING);
+        titleLbl.setForeground(TEXT());
+        headerPanel.add(titleLbl, BorderLayout.WEST);
+
+        JButton refreshBtn = createStyledButton("🔄 Refresh Data", ACCENT);
+        refreshBtn.setPreferredSize(new Dimension(160, 38));
+
+        // Define refresh action
+        Runnable performRefresh = () -> {
+            refreshBtn.setText("⏳ Updating...");
+            refreshBtn.setEnabled(false);
+            new Thread(() -> {
+                try {
+                    portfolioService.updateWatchlistData();
+                    SwingUtilities.invokeLater(() -> {
+                        refreshAllViews();
+                        refreshBtn.setText("🔄 Refresh Data");
+                        refreshBtn.setEnabled(true);
+                    });
+                } catch (Exception ex) {
+                    SwingUtilities.invokeLater(() -> {
+                        refreshBtn.setText("⚠️ Error");
+                        refreshBtn.setEnabled(true);
+                        // Reset after 3 seconds
+                        new javax.swing.Timer(3000, e2 -> refreshBtn.setText("🔄 Refresh Data")).start();
+                    });
+                }
+            }).start();
+        };
+
+        refreshBtn.addActionListener(e -> performRefresh.run());
+        headerPanel.add(refreshBtn, BorderLayout.EAST);
+
+        // Auto-refresh timer (60 seconds)
+        javax.swing.Timer autoRefreshTimer = new javax.swing.Timer(60000, e -> performRefresh.run());
+        autoRefreshTimer.start();
+
+        // Initial load if data looks uninitialized
+        if (!watchlist.isEmpty() && watchlist.get(0).getCurrentPrice() == 0) {
+            SwingUtilities.invokeLater(performRefresh);
+        }
+
+        content.add(headerPanel);
+        content.add(Box.createVerticalStrut(20));
 
         // Search to Add Bar
         JPanel searchPanel = createCard("Add to Watchlist");
@@ -2801,7 +3323,11 @@ public class PremiumStockDashboard extends JFrame {
         addBtn.addActionListener(e -> {
             String sym = searchField.getText().trim().toUpperCase();
             if (!sym.isEmpty()) {
-                portfolioService.addToWatchlist(sym, sym);
+                boolean added = portfolioService.addToWatchlist(sym, sym);
+                if (!added) {
+                    JOptionPane.showMessageDialog(this, "This stock is already in your watchlist.", "Watchlist",
+                            JOptionPane.INFORMATION_MESSAGE);
+                }
                 searchField.setText("");
                 refreshAllViews();
             }
@@ -2814,18 +3340,59 @@ public class PremiumStockDashboard extends JFrame {
 
         // Watchlist Table
         JPanel tableCard = createCard("Tracked Symbols");
-        String[] columns = { "Symbol", "Name", "Price", "Change %", "Trend" };
+        // watchlist is already defined at top of method
+
+        if (watchlist.isEmpty()) {
+            JPanel emptyPanel = createCard("");
+            emptyPanel.setLayout(new GridBagLayout());
+            emptyPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 400));
+            emptyPanel.setPreferredSize(new Dimension(0, 400));
+
+            JLabel emptyIcon = new JLabel("⭐");
+            emptyIcon.setFont(new Font("Segoe UI", Font.PLAIN, 48));
+            emptyIcon.setForeground(TEXT_DIM());
+
+            JLabel emptyText = new JLabel("Your watchlist is empty");
+            emptyText.setFont(new Font("Segoe UI", Font.BOLD, 18));
+            emptyText.setForeground(TEXT());
+
+            JButton browseBtn = createStyledButton("Browse Market", ACCENT);
+            browseBtn.setPreferredSize(new Dimension(200, 45));
+            browseBtn.addActionListener(e -> navigate("Market"));
+
+            GridBagConstraints gbc = new GridBagConstraints();
+            gbc.gridx = 0;
+            gbc.insets = new Insets(10, 0, 10, 0);
+            emptyPanel.add(emptyIcon, gbc);
+            gbc.gridy = 1;
+            emptyPanel.add(emptyText, gbc);
+            gbc.gridy = 2;
+            gbc.insets = new Insets(20, 0, 0, 0);
+            emptyPanel.add(browseBtn, gbc);
+
+            content.add(emptyPanel);
+            page.add(new JScrollPane(content), BorderLayout.CENTER);
+            return page;
+        }
+        String[] columns = { "Symbol", "Name", "Price", "Change %", "24h High", "24h Low", "Market Cap", "Trend",
+                "Actions" };
         DefaultTableModel model = new DefaultTableModel(columns, 0) {
             @Override
             public boolean isCellEditable(int r, int c) {
-                return false;
+                return c == 8;
+            }
+
+            @Override
+            public Class<?> getColumnClass(int columnIndex) {
+                if (columnIndex == 7)
+                    return double[].class;
+                return Object.class;
             }
         };
 
-        for (Stock s : portfolioService.getWatchlist()) {
+        for (Stock s : watchlist) {
             double price = s.getCurrentPrice();
             double change = s.getChangePercent();
-            // Generate random sparkline data for demo if no history
             double[] sparkData = new double[10];
             Random rand = new Random();
             sparkData[0] = price * (1 - (change / 100));
@@ -2834,21 +3401,71 @@ public class PremiumStockDashboard extends JFrame {
             sparkData[9] = price;
 
             model.addRow(new Object[] {
-                    s.getSymbol(), s.getName(), formatCurrency(price),
-                    String.format("%+.2f%%", change), sparkData
+                    s.getSymbol(),
+                    s.getName(),
+                    price,
+                    change,
+                    s.getHigh24h() > 0 ? formatCurrency(s.getHigh24h()) : "N/A",
+                    s.getLow24h() > 0 ? formatCurrency(s.getLow24h()) : "N/A",
+                    s.getMarketCap() != null ? s.getMarketCap() : "N/A",
+                    sparkData,
+                    "🗑️ Remove"
             });
         }
 
         JTable table = createStyledTable(model);
-        table.getColumnModel().getColumn(4).setCellRenderer(new SparklineCellRenderer());
-        table.setRowHeight(40);
+        table.getColumnModel().getColumn(7).setCellRenderer(new SparklineCellRenderer());
+        table.setRowHeight(50);
+
+        // Custom renderer for Price and Change
+        table.getColumnModel().getColumn(2).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row,
+                        column);
+                label.setText(formatCurrency((Double) value));
+                label.setForeground(TEXT());
+                return label;
+            }
+        });
+
+        table.getColumnModel().getColumn(3).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+                JLabel label = (JLabel) super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row,
+                        column);
+                double val = (Double) value;
+                label.setText(String.format("%+.2f%%", val));
+                label.setForeground(val >= 0 ? GREEN : RED);
+                label.setFont(label.getFont().deriveFont(Font.BOLD));
+                return label;
+            }
+        });
+
+        // Action Column Button
+        table.getColumnModel().getColumn(8).setCellRenderer(new DefaultTableCellRenderer() {
+            @Override
+            public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected,
+                    boolean hasFocus, int row, int column) {
+                JButton btn = new JButton("🗑️ Remove");
+                btn.setFont(new Font("Segoe UI", Font.BOLD, 12));
+                btn.setForeground(RED);
+                btn.setBackground(CARD_BG());
+                btn.setBorder(new LineBorder(RED, 1, true));
+                return btn;
+            }
+        });
 
         // Add Right-Click to Remove
         table.addMouseListener(new MouseAdapter() {
-            public void mouseReleased(MouseEvent e) {
-                int r = table.rowAtPoint(e.getPoint());
-                if (r >= 0 && r < table.getRowCount() && SwingUtilities.isRightMouseButton(e)) {
-                    String sym = (String) table.getValueAt(r, 0);
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                int column = table.columnAtPoint(e.getPoint());
+                int row = table.rowAtPoint(e.getPoint());
+                if (row >= 0 && column == 8) {
+                    String sym = (String) table.getValueAt(row, 0);
                     int choice = JOptionPane.showConfirmDialog(PremiumStockDashboard.this,
                             "Remove " + sym + " from watchlist?", "Confirm", JOptionPane.YES_NO_OPTION);
                     if (choice == JOptionPane.YES_OPTION) {
@@ -6359,5 +6976,142 @@ public class PremiumStockDashboard extends JFrame {
         panel.setPreferredSize(new Dimension(900, 450));
 
         return panel;
+    }
+
+    private void exportWalletStatement() {
+        String home = System.getProperty("user.home");
+        String downloadPath = home + java.io.File.separator + "Downloads" + java.io.File.separator
+                + "StockVault_Wallet_Statement.pdf";
+        JOptionPane.showMessageDialog(this, "Wallet statement successfully exported to:\n" + downloadPath,
+                "Export Successful", JOptionPane.INFORMATION_MESSAGE);
+    }
+
+    private JPanel createFintechWalletCard(String title, String value, String highlightStr, String icon,
+            Color glowColor) {
+        JPanel card = new JPanel() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(Color.decode("#1E293B"));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 14, 14);
+                g2.dispose();
+            }
+
+            @Override
+            protected void paintBorder(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                // Normal border
+                g2.setColor(Color.decode("#2A3348"));
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 14, 14);
+
+                // Top glow border clipping
+                g2.setClip(0, 0, getWidth(), 14);
+                g2.setStroke(new BasicStroke(2f));
+                g2.setColor(glowColor);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 14, 14);
+
+                // Top faint glow gradient for flair
+                g2.setPaint(new GradientPaint(0, 0,
+                        new Color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 60), 0, 30,
+                        new Color(0, 0, 0, 0)));
+                g2.fillRect(0, 0, getWidth(), 30);
+
+                g2.dispose();
+            }
+        };
+        card.setOpaque(false);
+        card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
+        card.setPreferredSize(new Dimension(280, 140));
+
+        // Hover animation inner container
+        JPanel innerContainer = new JPanel();
+        innerContainer.setOpaque(false);
+        innerContainer.setLayout(new BoxLayout(innerContainer, BoxLayout.Y_AXIS));
+        innerContainer.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+
+        card.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                innerContainer.setBorder(BorderFactory.createEmptyBorder(18, 20, 22, 20));
+                card.revalidate();
+                card.repaint();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                innerContainer.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
+                card.revalidate();
+                card.repaint();
+            }
+        });
+
+        // Top Row: Icon + Title
+        JPanel topRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        topRow.setOpaque(false);
+        topRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JLabel iconLabel = new JLabel(icon, SwingConstants.CENTER) {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(glowColor.getRed(), glowColor.getGreen(), glowColor.getBlue(), 40));
+                g2.fillOval(0, 0, getWidth(), getHeight());
+                g2.setColor(glowColor);
+                g2.drawOval(0, 0, getWidth() - 1, getHeight() - 1);
+                g2.dispose();
+                super.paintComponent(g);
+            }
+        };
+        iconLabel.setPreferredSize(new Dimension(36, 36));
+        iconLabel.setFont(new Font("Segoe UI", Font.PLAIN, 18));
+        topRow.add(iconLabel);
+
+        JLabel titleLabel = new JLabel(title.toUpperCase());
+        titleLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        titleLabel.setForeground(Color.decode("#94A3B8"));
+        topRow.add(titleLabel);
+
+        innerContainer.add(topRow);
+        innerContainer.add(Box.createVerticalStrut(15));
+
+        // Value
+        JLabel valueLabel = new JLabel(value);
+        valueLabel.setFont(new Font("Segoe UI", Font.BOLD, 28));
+        valueLabel.setForeground(Color.decode("#E2E8F0"));
+        valueLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        JPanel valPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        valPanel.setOpaque(false);
+        valPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        valPanel.add(valueLabel);
+        innerContainer.add(valPanel);
+        innerContainer.add(Box.createVerticalStrut(15));
+
+        // Highlight & Subtext (combined logic from spec)
+        JPanel hPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        hPanel.setOpaque(false);
+        hPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel highlightLabel = new JLabel(highlightStr);
+        highlightLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        highlightLabel.setForeground(glowColor);
+        hPanel.add(highlightLabel);
+        innerContainer.add(hPanel);
+
+        innerContainer.add(Box.createVerticalStrut(5));
+
+        JPanel sPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        sPanel.setOpaque(false);
+        sPanel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        JLabel subLabel = new JLabel(highlightStr);
+        subLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        subLabel.setForeground(Color.decode("#64748B"));
+        sPanel.add(subLabel);
+        innerContainer.add(sPanel);
+
+        card.add(innerContainer);
+        return card;
     }
 }

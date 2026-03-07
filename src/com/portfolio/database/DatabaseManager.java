@@ -151,7 +151,7 @@ public class DatabaseManager {
                     ")";
             stmt.execute(createUsersTable);
             System.out.println("✅ Users table ready");
-            
+
             // Add user_id column to existing tables if not exists
             try {
                 stmt.execute("ALTER TABLE portfolio_items ADD COLUMN user_id INTEGER DEFAULT 1");
@@ -181,6 +181,35 @@ public class DatabaseManager {
                     ")";
             stmt.execute(createEmailSettingsTable);
             System.out.println("✅ Email settings table ready");
+
+            // ===== CREATE WALLET TABLE =====
+            String createWalletTable = "CREATE TABLE IF NOT EXISTS wallet (" +
+                    "    id INTEGER PRIMARY KEY DEFAULT 1," +
+                    "    balance REAL DEFAULT 0.0," +
+                    "    total_deposited REAL DEFAULT 0.0," +
+                    "    total_withdrawn REAL DEFAULT 0.0" +
+                    ")";
+            stmt.execute(createWalletTable);
+
+            // Initialize wallet with ID 1 if it doesn't exist
+            try {
+                stmt.execute(
+                        "INSERT OR IGNORE INTO wallet (id, balance, total_deposited, total_withdrawn) VALUES (1, 0.0, 0.0, 0.0)");
+            } catch (SQLException e) {
+            }
+            System.out.println("✅ Wallet table ready");
+
+            // ===== CREATE WALLET TRANSACTIONS TABLE =====
+            String createWalletTransactionsTable = "CREATE TABLE IF NOT EXISTS wallet_transactions (" +
+                    "    id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                    "    type TEXT NOT NULL," + // DEPOSIT, WITHDRAW, BUY_STOCK, SELL_STOCK, TAX_PAYMENT
+                    "    amount REAL NOT NULL," +
+                    "    balance_after REAL NOT NULL," +
+                    "    description TEXT," +
+                    "    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP" +
+                    ")";
+            stmt.execute(createWalletTransactionsTable);
+            System.out.println("✅ Wallet transactions table ready");
 
             // Close statement (good practice to free resources)
             stmt.close();
@@ -296,25 +325,26 @@ public class DatabaseManager {
             System.err.println("❌ Error clearing data: " + e.getMessage());
         }
     }
-    
+
     // ═══════════════════════════════════════════════════════════════════════
     // USER AUTHENTICATION METHODS
     // ═══════════════════════════════════════════════════════════════════════
-    
+
     /**
      * Register a new user
+     * 
      * @return user ID if successful, -1 if username already exists
      */
     public static int registerUser(String username, String password, String email, String fullName) {
         try {
             Connection conn = getConnection();
-            
+
             // Check if username already exists
             String checkSql = "SELECT id FROM users WHERE username = ?";
             PreparedStatement checkStmt = conn.prepareStatement(checkSql);
             checkStmt.setString(1, username);
             ResultSet rs = checkStmt.executeQuery();
-            
+
             if (rs.next()) {
                 // Username already exists
                 rs.close();
@@ -323,10 +353,10 @@ public class DatabaseManager {
             }
             rs.close();
             checkStmt.close();
-            
+
             // Hash password (simple hash for demo - use BCrypt in production)
             String passwordHash = hashPassword(password);
-            
+
             // Insert new user
             String insertSql = "INSERT INTO users (username, password_hash, email, full_name) VALUES (?, ?, ?, ?)";
             PreparedStatement pstmt = conn.prepareStatement(insertSql, Statement.RETURN_GENERATED_KEYS);
@@ -335,7 +365,7 @@ public class DatabaseManager {
             pstmt.setString(3, email);
             pstmt.setString(4, fullName);
             pstmt.executeUpdate();
-            
+
             // Get generated user ID
             ResultSet generatedKeys = pstmt.getGeneratedKeys();
             int userId = -1;
@@ -344,34 +374,35 @@ public class DatabaseManager {
             }
             generatedKeys.close();
             pstmt.close();
-            
+
             System.out.println("✅ User registered: " + username + " (ID: " + userId + ")");
             return userId;
-            
+
         } catch (SQLException e) {
             System.err.println("❌ Error registering user: " + e.getMessage());
             return -1;
         }
     }
-    
+
     /**
      * Login user
+     * 
      * @return user ID if successful, -1 if login fails
      */
     public static int loginUser(String username, String password) {
         try {
             Connection conn = getConnection();
-            
+
             String sql = "SELECT id, password_hash FROM users WHERE username = ?";
             PreparedStatement pstmt = conn.prepareStatement(sql);
             pstmt.setString(1, username);
             ResultSet rs = pstmt.executeQuery();
-            
+
             if (rs.next()) {
                 int userId = rs.getInt("id");
                 String storedHash = rs.getString("password_hash");
                 String inputHash = hashPassword(password);
-                
+
                 if (storedHash.equals(inputHash)) {
                     // Update last login
                     updateLastLogin(userId);
@@ -381,18 +412,18 @@ public class DatabaseManager {
                     return userId;
                 }
             }
-            
+
             rs.close();
             pstmt.close();
             System.out.println("❌ Login failed for: " + username);
             return -1;
-            
+
         } catch (SQLException e) {
             System.err.println("❌ Error during login: " + e.getMessage());
             return -1;
         }
     }
-    
+
     /**
      * Update last login timestamp
      */
@@ -408,9 +439,10 @@ public class DatabaseManager {
             System.err.println("❌ Error updating last login: " + e.getMessage());
         }
     }
-    
+
     /**
      * Get user info
+     * 
      * @return String array: [username, email, fullName, createdAt, lastLogin]
      */
     public static String[] getUserInfo(int userId) {
@@ -420,7 +452,7 @@ public class DatabaseManager {
             PreparedStatement pstmt = conn.prepareStatement(sql);
             pstmt.setInt(1, userId);
             ResultSet rs = pstmt.executeQuery();
-            
+
             if (rs.next()) {
                 String[] info = new String[5];
                 info[0] = rs.getString("username");
@@ -432,7 +464,7 @@ public class DatabaseManager {
                 pstmt.close();
                 return info;
             }
-            
+
             rs.close();
             pstmt.close();
         } catch (SQLException e) {
@@ -440,7 +472,7 @@ public class DatabaseManager {
         }
         return null;
     }
-    
+
     /**
      * Simple password hashing (use BCrypt in production!)
      */
@@ -451,7 +483,8 @@ public class DatabaseManager {
             StringBuilder hexString = new StringBuilder();
             for (byte b : hash) {
                 String hex = Integer.toHexString(0xff & b);
-                if (hex.length() == 1) hexString.append('0');
+                if (hex.length() == 1)
+                    hexString.append('0');
                 hexString.append(hex);
             }
             return hexString.toString();

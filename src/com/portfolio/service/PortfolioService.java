@@ -23,6 +23,7 @@ public class PortfolioService {
     private String baseCurrency = "INR"; // Default display currency
     private NotificationManager notificationManager; // NEW: Handles desktop/in-app alerts
     private List<PriceAlert> priceAlerts; // Stores user-defined price alerts
+    private WalletService walletService; // NEW: Wallet integration
 
     // Constructor - creates a new portfolio manager
     // Example: new PortfolioService(alphaVantageService)
@@ -35,6 +36,7 @@ public class PortfolioService {
         this.currencyService = new CurrencyService(); // Initialize currency service
         this.notificationManager = NotificationManager.getInstance(); // Initialize notification manager
         this.priceAlerts = new ArrayList<>(); // Initialize price alerts list
+        this.walletService = new WalletService(); // Initialize wallet service
 
         // Load existing data from database when service starts
         loadFromDatabase();
@@ -53,7 +55,7 @@ public class PortfolioService {
                 double newPrice = s.getCurrentPrice() * (1 + change);
                 s.setCurrentPrice(newPrice);
             }
-;
+            ;
         }).start();
     }
 
@@ -87,13 +89,22 @@ public class PortfolioService {
         return watchlist;
     }
 
-    public void addToWatchlist(String symbol, String name) {
+    public boolean addToWatchlist(String symbol, String name) {
+        // Prevent duplicates
+        boolean exists = watchlist.stream()
+                .anyMatch(s -> s.getSymbol().equalsIgnoreCase(symbol));
+        if (exists) {
+            return false;
+        }
+
         try {
             portfolioDAO.addToWatchlist(symbol, name);
             watchlist.add(new Stock(symbol, name));
             System.out.println("⭐ Added to watchlist: " + symbol);
+            return true;
         } catch (Exception e) {
             System.err.println("❌ Error adding to watchlist: " + e.getMessage());
+            return false;
         }
     }
 
@@ -113,6 +124,19 @@ public class PortfolioService {
     // at $150 each"
     public void buyStock(String symbol, String name, int quantity, double price, String currency, String sector,
             String marketCap, String riskLevel) {
+
+        double totalCost = quantity * price;
+        if (walletService.getBalance() < totalCost) {
+            System.err.println("❌ Insufficient Wallet Balance for purchase. Needed: " + totalCost);
+            // Optionally could throw an exception or notify UI. Returning early keeps app
+            // from crashing.
+            javax.swing.JOptionPane.showMessageDialog(null,
+                    "Insufficient wallet balance! Needed: ₹" + String.format("%.2f", totalCost),
+                    "Transaction Failed",
+                    javax.swing.JOptionPane.ERROR_MESSAGE);
+            return;
+        }
+
         Stock stock = new Stock(symbol, name);
         stock.setCurrentPrice(price);
 
@@ -129,9 +153,11 @@ public class PortfolioService {
         transactions.add(transaction);
 
         try {
-            portfolioDAO.savePortfolioItem(item);
-            portfolioDAO.saveTransaction(transaction);
-            notificationManager.showTradeConfirmation(symbol, quantity, true);
+            if (walletService.processStockPurchase(totalCost, symbol, quantity)) {
+                portfolioDAO.savePortfolioItem(item);
+                portfolioDAO.saveTransaction(transaction);
+                notificationManager.showTradeConfirmation(symbol, quantity, true);
+            }
         } catch (Exception e) {
             System.err.println("❌ Error saving to database: " + e.getMessage());
         }
@@ -176,12 +202,15 @@ public class PortfolioService {
         Transaction transaction = new Transaction(symbol, "SELL", quantity, currentPrice);
         transactions.add(transaction);
 
+        double totalProceeds = quantity * currentPrice;
+
         // Update or remove the portfolio item
         if (itemToSell.getQuantity() == quantity) {
             // Selling all shares - remove from portfolio
             portfolioItems.remove(itemToSell);
             try {
                 portfolioDAO.deletePortfolioItem(symbol);
+                walletService.processStockSale(totalProceeds, symbol, quantity);
                 notificationManager.showTradeConfirmation(symbol, quantity, false);
                 System.out.println("✅ Sold all " + quantity + " shares of " + symbol + " @ ₹" + currentPrice);
             } catch (Exception e) {
@@ -193,6 +222,7 @@ public class PortfolioService {
             itemToSell.setQuantity(newQuantity);
             try {
                 portfolioDAO.updatePortfolioItemQuantity(symbol, newQuantity);
+                walletService.processStockSale(totalProceeds, symbol, quantity);
                 notificationManager.showTradeConfirmation(symbol, quantity, false);
                 System.out.println("✅ Sold " + quantity + " shares of " + symbol + " @ ₹" + currentPrice + " ("
                         + newQuantity + " remaining)");
@@ -279,20 +309,33 @@ public class PortfolioService {
     // Example: Updates Apple from $150 to real price $278, Tesla from $200 to real
     // price $250
     public void updateAllPrices() {
-        System.out.println("\n📊 Updating stock prices..."); // Show we're starting
-        // Loop through each stock in your portfolio
+        System.out.println("\n📊 Updating portfolio prices...");
         for (PortfolioItem item : portfolioItems) {
             try {
-                priceService.updateStockPrice(item.getStock()); // Fetch and update real price
-
-                // Save updated price to database
+                priceService.updateStockPrice(item.getStock());
                 portfolioDAO.updateStockPrice(item.getStock().getSymbol(), item.getStock().getCurrentPrice());
-
-                System.out.println("Updated " + item.getStock().getSymbol() +
-                        ": $" + item.getStock().getCurrentPrice()); // Show new price
+                System.out.println("Updated Portfolio " + item.getStock().getSymbol() +
+                        ": $" + item.getStock().getCurrentPrice());
             } catch (Exception e) {
-                // If update fails (ex: no internet), show error
                 System.err.println("Failed to update " + item.getStock().getSymbol());
+            }
+        }
+
+        // Also update watchlist
+        updateWatchlistData();
+    }
+
+    /**
+     * Dedicated method to refresh data for all stocks in the watchlist.
+     */
+    public void updateWatchlistData() {
+        System.out.println("⭐ Updating watchlist data...");
+        for (Stock s : watchlist) {
+            try {
+                priceService.updateStockPrice(s);
+                System.out.println("Updated Watchlist " + s.getSymbol() + ": $" + s.getCurrentPrice());
+            } catch (Exception e) {
+                System.err.println("Failed to update watchlist " + s.getSymbol() + ": " + e.getMessage());
             }
         }
     }
@@ -390,6 +433,14 @@ public class PortfolioService {
 
     public StockPriceService getPriceService() {
         return priceService;
+    }
+
+    public CurrencyService getCurrencyService() {
+        return currencyService;
+    }
+
+    public WalletService getWalletService() {
+        return walletService;
     }
 
     private String getSectorForSymbol(String symbol) {
@@ -494,6 +545,5 @@ public class PortfolioService {
             }
         }
     }
-
 
 }

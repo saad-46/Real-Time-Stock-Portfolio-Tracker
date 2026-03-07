@@ -122,10 +122,9 @@ public class AlphaVantageService implements StockPriceService {
 
             // If we can't find the price field, something went wrong
             if (priceIndex == -1) {
-                System.err.println("⚠️ Could not find price in API response. Using mock price.");
-                // Show first 200 characters of response to help debug
-                System.err.println("Response: " + jsonResponse.substring(0, Math.min(200, jsonResponse.length())));
-                return 100.0 + (Math.random() * 100); // Return a random price between $100-$200
+                // System.err.println("⚠️ Could not find price in API response. Using mock
+                // price.");
+                return 100.0 + (Math.random() * 100);
             }
 
             // Extract the price value from the JSON text

@@ -46,7 +46,7 @@ public class TwelveDataService implements StockPriceService {
         }
 
         String body = response.body();
-        
+
         // Check for error response
         if (body.contains("\"code\"") && body.contains("\"status\":\"error\"")) {
             throw new Exception("TwelveData error: " + body);
@@ -92,6 +92,8 @@ public class TwelveDataService implements StockPriceService {
 
         double price = parseJsonStringValue(body, "\"close\":");
         double changePercent = parseJsonStringValue(body, "\"percent_change\":");
+        double high = parseJsonStringValue(body, "\"high\":");
+        double low = parseJsonStringValue(body, "\"low\":");
 
         if (price <= 0) {
             // Try the simpler price field
@@ -104,6 +106,8 @@ public class TwelveDataService implements StockPriceService {
 
         stock.setCurrentPrice(price);
         stock.setChangePercent(changePercent);
+        stock.setHigh24h(high);
+        stock.setLow24h(low);
         System.out.println("✅ TwelveData updated " + stock.getSymbol() + ": $" +
                 String.format("%.2f", price) + " (" + String.format("%.2f", changePercent) + "%)");
     }
@@ -148,14 +152,17 @@ public class TwelveDataService implements StockPriceService {
         try {
             String key = "\"price\":";
             int index = json.indexOf(key);
-            if (index == -1) return 0.0;
+            if (index == -1)
+                return 0.0;
 
             int start = index + key.length();
             // Skip whitespace and opening quote
-            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"')) start++;
+            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"'))
+                start++;
 
             int end = start;
-            while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ',' && json.charAt(end) != '}') {
+            while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ','
+                    && json.charAt(end) != '}') {
                 end++;
             }
 
@@ -172,24 +179,27 @@ public class TwelveDataService implements StockPriceService {
     private double parseJsonStringValue(String json, String key) {
         try {
             int index = json.indexOf(key);
-            if (index == -1) return 0.0;
+            if (index == -1)
+                return 0.0;
 
             int start = index + key.length();
             // Skip whitespace and quote
-            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"')) start++;
+            while (start < json.length() && (json.charAt(start) == ' ' || json.charAt(start) == '"'))
+                start++;
 
             int end = start;
-            while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ',' && json.charAt(end) != '}') {
+            while (end < json.length() && json.charAt(end) != '"' && json.charAt(end) != ','
+                    && json.charAt(end) != '}') {
                 end++;
             }
 
             String valueStr = json.substring(start, end).trim();
-            if (valueStr.isEmpty() || valueStr.equals("null")) return 0.0;
+            if (valueStr.isEmpty() || valueStr.equals("null"))
+                return 0.0;
             return Double.parseDouble(valueStr);
         } catch (Exception e) {
             return 0.0;
         }
     }
-
 
 }

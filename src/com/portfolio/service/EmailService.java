@@ -22,7 +22,7 @@ public class EmailService {
     // 3. Go to https://myaccount.google.com/apppasswords
     // 4. Select "Mail" and "Other (Custom name)" - name it "StockVault"
     // 5. Copy the 16-character password (no spaces) and paste it below
-    private String senderPassword = ""; // ⚠️ REPLACE WITH APP PASSWORD!
+    private String senderPassword = ApiKeyManager.getGmailAppPassword();
 
     public EmailService() {
         // Default configuration with provided credentials

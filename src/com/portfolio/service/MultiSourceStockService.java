@@ -7,7 +7,8 @@ import com.portfolio.model.Stock;
  * Tries sources in order: Finnhub → Twelve Data → Alpha Vantage.
  * If one API fails or rate-limits, automatically tries the next.
  * 
- * This gives access to virtually unlimited stock symbols across all major exchanges.
+ * This gives access to virtually unlimited stock symbols across all major
+ * exchanges.
  */
 public class MultiSourceStockService implements StockPriceService {
 
@@ -27,25 +28,22 @@ public class MultiSourceStockService implements StockPriceService {
      */
     @Override
     public double getCurrentPrice(String symbol) throws Exception {
-        // Try 1: Finnhub (Primary - most generous rate limit)
+        // Try 1: Finnhub (Primary)
         try {
             return finnhubService.getCurrentPrice(symbol);
-        } catch (Exception e) {
-            System.out.println("⚠️ Finnhub failed for " + symbol + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         // Try 2: Twelve Data (Secondary)
         try {
             return twelveDataService.getCurrentPrice(symbol);
-        } catch (Exception e) {
-            System.out.println("⚠️ TwelveData failed for " + symbol + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         // Try 3: Alpha Vantage (Last resort)
         try {
             return alphaVantageService.getCurrentPrice(symbol);
-        } catch (Exception e) {
-            System.out.println("⚠️ AlphaVantage failed for " + symbol + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         throw new Exception("All stock APIs failed for " + symbol + ". Please try again later.");
@@ -60,31 +58,29 @@ public class MultiSourceStockService implements StockPriceService {
         try {
             finnhubService.updateStockPrice(stock);
             return;
-        } catch (Exception e) {
-            System.out.println("⚠️ Finnhub update failed for " + stock.getSymbol() + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         // Try 2: Twelve Data
         try {
             twelveDataService.updateStockPrice(stock);
             return;
-        } catch (Exception e) {
-            System.out.println("⚠️ TwelveData update failed for " + stock.getSymbol() + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         // Try 3: Alpha Vantage
         try {
             alphaVantageService.updateStockPrice(stock);
             return;
-        } catch (Exception e) {
-            System.out.println("⚠️ AlphaVantage update failed for " + stock.getSymbol() + ": " + e.getMessage());
+        } catch (Exception ignored) {
         }
 
         throw new Exception("All stock APIs failed to update " + stock.getSymbol());
     }
 
     /**
-     * Gets historical data. Tries Twelve Data first (better historical), then Alpha Vantage.
+     * Gets historical data. Tries Twelve Data first (better historical), then Alpha
+     * Vantage.
      */
     public String getHistoricalData(String symbol) throws Exception {
         // Try Twelve Data first (better for historical data)
@@ -112,7 +108,15 @@ public class MultiSourceStockService implements StockPriceService {
     }
 
     // Expose individual services for advanced use
-    public FinnhubService getFinnhubService() { return finnhubService; }
-    public TwelveDataService getTwelveDataService() { return twelveDataService; }
-    public AlphaVantageService getAlphaVantageService() { return alphaVantageService; }
+    public FinnhubService getFinnhubService() {
+        return finnhubService;
+    }
+
+    public TwelveDataService getTwelveDataService() {
+        return twelveDataService;
+    }
+
+    public AlphaVantageService getAlphaVantageService() {
+        return alphaVantageService;
+    }
 }

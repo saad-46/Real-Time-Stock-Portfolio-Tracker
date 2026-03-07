@@ -12,7 +12,8 @@ import java.net.http.HttpResponse;
  */
 public class CurrencyService {
 
-    private static final String API_URL = "https://api.exchangerate-api.com/v4/latest/";
+    private static final String API_KEY = ApiKeyManager.getExchangeRateApiKey();
+    private static final String API_URL = "https://v6.exchangerate-api.com/v6/" + API_KEY + "/latest/";
     private final HttpClient client;
 
     public CurrencyService() {

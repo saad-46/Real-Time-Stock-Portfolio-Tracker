@@ -10,6 +10,8 @@ public class Stock {
     private String sector;
     private String marketCap; // Small, Mid, Large
     private String riskLevel; // Low, Medium, High
+    private double high24h;
+    private double low24h;
 
     // Constructor - runs when you create a new Stock object
     // Example: new Stock("AAPL", "Apple Inc.")
@@ -28,6 +30,10 @@ public class Stock {
     // Example: stock.getName() returns "Apple Inc."
     public String getName() {
         return name; // Return the name we stored
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     // Getter method - returns the current price
@@ -70,6 +76,22 @@ public class Stock {
 
     public void setRiskLevel(String riskLevel) {
         this.riskLevel = riskLevel;
+    }
+
+    public double getHigh24h() {
+        return high24h;
+    }
+
+    public void setHigh24h(double high24h) {
+        this.high24h = high24h;
+    }
+
+    public double getLow24h() {
+        return low24h;
+    }
+
+    public void setLow24h(double low24h) {
+        this.low24h = low24h;
     }
 
     @Override
