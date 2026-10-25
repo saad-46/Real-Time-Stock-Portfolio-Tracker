@@ -10,9 +10,10 @@ public class StockDatabase {
     
     /**
      * Stock data format: {Symbol, Name, BasePrice, ChangePercent, Sector, MarketCap}
-     * Prices are in USD, will be converted based on user's currency preference
+     * NOTE: BasePrice and ChangePercent are SAMPLE numbers, not market data. They are never displayed as quotes;
+     * the UI shows a real price only when the portfolio/watchlist holds a provider-reported one.
      */
-    public static final Object[][] ALL_STOCKS = {
+    private static final Object[][] ALL_STOCKS = {
         // === TECHNOLOGY (IT) ===
         { "AAPL", "Apple Inc", 198.45, "+1.23%", "IT", "Large Cap" },
         { "GOOGL", "Alphabet Inc", 142.50, "+0.87%", "IT", "Large Cap" },

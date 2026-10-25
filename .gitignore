@@ -1,14 +1,28 @@
-# Compiled class files
+# Compiled class files / build output
 *.class
 bin/
-com/*.class
-src/**/*.class
+/com/
+out/
+target/
+build/
 
-# API Keys & Credentials (NEVER COMMIT!)
-src/com/portfolio/service/ApiKeyManager.java
+# API keys & credentials (NEVER COMMIT). Keys live in environment variables or in this local, ignored file;
+# see README.md "Configuration". src/.../ApiKeyManager.java itself holds no keys and IS tracked.
+stockvault.local.properties
+*.local.properties
 *.env
 .env
 .env.local
+
+# Databases and their backups: they hold real user data (holdings, wallet, transactions, email settings)
+portfolio.db
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.pre-migration-*.bak
+*.bak
 
 # IDE settings
 .vscode/
@@ -19,31 +33,21 @@ src/com/portfolio/service/ApiKeyManager.java
 .classpath
 .settings/
 
-# Database
-portfolio.db
-*.db-shm
-*.db-wal
-
 # OS files
 .DS_Store
 Thumbs.db
 
-# Logs & Temporary
+# Logs & temporary
 *.log
 temp/
 tmp/
 
-# Large Models (Voice)
+# Large models (voice)
 models/
-lib/vosk-*.jar
 
-# Build Artifacts
-out/
-target/
-build/
-
-# Screenshots and temporary scripts
+# Screenshots and temporary scripts (but keep bundled resources)
 *.png
+!src/resources/**/*.png
 *.ps1
 capture_*.ps1
 list_*.ps1
@@ -55,3 +59,7 @@ analytics_screenshot*.png
 # Python scripts (temporary)
 script.py
 fix_dashboard.py
+
+# jirp leftover listing personal paths: never commit
+sources.txt
+!run-stockvault.ps1

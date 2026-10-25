@@ -19,7 +19,7 @@ public class TextToSpeechService {
     private static final String VOICE_ID = "21m00Tcm4TlvDq8ikWAM"; // Rachel voice
 
     public TextToSpeechService() {
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = Net.client();
     }
 
     /**
@@ -28,7 +28,7 @@ public class TextToSpeechService {
      * @param text Text to speak
      */
     public void speak(String text) {
-        new Thread(() -> {
+        com.portfolio.AppThreads.daemon(() -> {
             try {
                 // Use Java's built-in TTS via command line
                 if (System.getProperty("os.name").toLowerCase().contains("win")) {
@@ -47,41 +47,59 @@ public class TextToSpeechService {
         }).start();
     }
 
+    /** Text to speak, made safe to hand to a speech engine: control characters become spaces, length capped. */
+    static String sanitize(String text) {
+        if (text == null) {
+            return "";
+        }
+        String t = text.replaceAll("[\\p{Cntrl}&&[^\\n]]", " ").replace('\n', ' ').trim();
+        return t.length() > 2000 ? t.substring(0, 2000) : t;
+    }
+
     /**
-     * Windows TTS using PowerShell
+     * Windows speech via PowerShell. The text is passed in an ENVIRONMENT VARIABLE and read as data by the script;
+     * it is never part of the script or the command line, so quotes or ';' in AI/news text cannot run anything.
      */
+    static ProcessBuilder windowsCommand(String text) {
+        ProcessBuilder pb = new ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-Command",
+                "Add-Type -AssemblyName System.Speech; $s = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
+                        + "$s.Rate = 1; $s.Volume = 100; $s.Speak($env:STOCKVAULT_TTS_TEXT)");
+        pb.environment().put("STOCKVAULT_TTS_TEXT", sanitize(text));
+        return pb;
+    }
+
+    /** macOS: text goes in on stdin ("say -f -"), so it can never be parsed as an option. */
+    static ProcessBuilder macCommand() {
+        return new ProcessBuilder("say", "-f", "-");
+    }
+
+    /** Linux: text goes in on stdin, never on the command line. */
+    static ProcessBuilder linuxCommand() {
+        return new ProcessBuilder("espeak", "--stdin");
+    }
+
+    private void run(ProcessBuilder pb, String stdinText) throws Exception {
+        Process process = pb.start();
+        try (OutputStream out = process.getOutputStream()) {
+            if (stdinText != null) {
+                out.write(sanitize(stdinText).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+            }
+        }
+        if (!process.waitFor(120, java.util.concurrent.TimeUnit.SECONDS)) {
+            process.destroyForcibly();
+        }
+    }
+
     private void speakWindows(String text) throws Exception {
-        // Escape quotes in text
-        text = text.replace("\"", "'");
-
-        String command = String.format(
-                "powershell -Command \"Add-Type -AssemblyName System.Speech; " +
-                        "$speak = New-Object System.Speech.Synthesis.SpeechSynthesizer; " +
-                        "$speak.Rate = 1; " +
-                        "$speak.Volume = 100; " +
-                        "$speak.Speak('%s')\"",
-                text);
-
-        Process process = Runtime.getRuntime().exec(command);
-        process.waitFor();
+        run(windowsCommand(text), null);
     }
 
-    /**
-     * macOS TTS using 'say' command
-     */
     private void speakMac(String text) throws Exception {
-        String[] command = { "say", text };
-        Process process = Runtime.getRuntime().exec(command);
-        process.waitFor();
+        run(macCommand(), text);
     }
 
-    /**
-     * Linux TTS using espeak
-     */
     private void speakLinux(String text) throws Exception {
-        String[] command = { "espeak", text };
-        Process process = Runtime.getRuntime().exec(command);
-        process.waitFor();
+        run(linuxCommand(), text);
     }
 
     /**
@@ -96,14 +114,14 @@ public class TextToSpeechService {
             return;
         }
 
-        new Thread(() -> {
+        com.portfolio.AppThreads.daemon(() -> {
             try {
                 // Build request
                 String requestBody = String.format(
                         "{\"text\":\"%s\",\"model_id\":\"eleven_monolingual_v1\",\"voice_settings\":{\"stability\":0.5,\"similarity_boost\":0.5}}",
                         text.replace("\"", "\\\""));
 
-                HttpRequest request = HttpRequest.newBuilder()
+                HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
                         .uri(URI.create(ELEVENLABS_URL + VOICE_ID))
                         .header("xi-api-key", ELEVENLABS_API_KEY)
                         .header("Content-Type", "application/json")

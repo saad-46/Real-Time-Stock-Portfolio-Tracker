@@ -24,7 +24,7 @@ public class AssemblyAIVoiceService {
     private TargetDataLine microphone;
     
     public AssemblyAIVoiceService() {
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = Net.client();
     }
     
     /**
@@ -54,7 +54,7 @@ public class AssemblyAIVoiceService {
         System.out.println("✅ Transcription: " + transcription);
         
         // Cleanup
-        audioFile.delete();
+        deleteQuietly(audioFile);
         
         return transcription;
     }
@@ -85,7 +85,7 @@ public class AssemblyAIVoiceService {
         System.out.println("✅ Transcription: " + transcription);
         
         // Cleanup
-        audioFile.delete();
+        deleteQuietly(audioFile);
         
         return transcription;
     }
@@ -160,7 +160,7 @@ public class AssemblyAIVoiceService {
     private String uploadAudio(File audioFile) throws Exception {
         byte[] audioData = Files.readAllBytes(audioFile.toPath());
         
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder().timeout(Net.UPLOAD_TIMEOUT)
             .uri(URI.create(UPLOAD_URL))
             .header("authorization", API_KEY)
             .header("Content-Type", "application/octet-stream")
@@ -190,7 +190,7 @@ public class AssemblyAIVoiceService {
         speechModels.put("universal-2");  // Use universal-2 model
         requestBody.put("speech_models", speechModels);
         
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
             .uri(URI.create(TRANSCRIPT_URL))
             .header("authorization", API_KEY)
             .header("Content-Type", "application/json")
@@ -215,7 +215,7 @@ public class AssemblyAIVoiceService {
         
         // Poll every 1 second, max 30 seconds
         for (int i = 0; i < 30; i++) {
-            HttpRequest request = HttpRequest.newBuilder()
+            HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
                 .uri(URI.create(url))
                 .header("authorization", API_KEY)
                 .GET()
@@ -371,6 +371,13 @@ public class AssemblyAIVoiceService {
             isRecording = false;
             microphone.stop();
             microphone.close();
+        }
+    }
+
+    /** Removes the temporary recording; a leftover temp file is reported, never silently ignored. */
+    private static void deleteQuietly(java.io.File file) {
+        if (!file.delete() && file.exists()) {
+            System.err.println("⚠️ Could not delete temporary recording " + file);
         }
     }
 }

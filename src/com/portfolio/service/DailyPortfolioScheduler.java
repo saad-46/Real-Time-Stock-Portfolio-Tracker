@@ -12,8 +12,8 @@ public class DailyPortfolioScheduler {
     private final PortfolioService portfolioService;
     private final EmailService emailService;
     private ScheduledExecutorService scheduler;
-    private String recipientEmail;
-    private boolean isRunning = false;
+    private volatile String recipientEmail;
+    private volatile boolean isRunning = false;
 
     public DailyPortfolioScheduler(PortfolioService portfolioService, EmailService emailService) {
         this.portfolioService = portfolioService;
@@ -25,14 +25,18 @@ public class DailyPortfolioScheduler {
      * 
      * @param email Recipient email address
      */
-    public void start(String email, String timeStr) {
+    public synchronized void start(String email, String timeStr) {
+        if (email == null || email.isBlank()) {
+            System.out.println("Daily e-mail scheduler not started: no recipient is configured");
+            return;
+        }
         if (isRunning) {
             System.out.println("⚠️ Scheduler already running");
             return;
         }
 
         this.recipientEmail = email;
-        this.scheduler = Executors.newScheduledThreadPool(1);
+        this.scheduler = Executors.newScheduledThreadPool(1, com.portfolio.AppThreads.daemonFactory("daily-email"));
 
         // Parse time (e.g., "09:00")
         String[] parts = timeStr.split(":");
@@ -70,12 +74,12 @@ public class DailyPortfolioScheduler {
     /**
      * Stop the scheduler
      */
-    public void stop() {
+    public synchronized void stop() {
         if (scheduler != null && !scheduler.isShutdown()) {
-            scheduler.shutdown();
-            isRunning = false;
+            scheduler.shutdownNow(); // cancels the pending run and interrupts one in progress
             System.out.println("⏹️ Daily email scheduler stopped");
         }
+        isRunning = false;
     }
 
     /**

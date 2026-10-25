@@ -232,7 +232,7 @@ public class WelcomeScreen extends JFrame {
         loadingDialog.add(panel);
 
         // Simulate loading in background
-        new Thread(() -> {
+        com.portfolio.AppThreads.daemon(() -> {
             try {
                 Thread.sleep(1500); // Simulate loading
                 SwingUtilities.invokeLater(() -> {
@@ -253,7 +253,7 @@ public class WelcomeScreen extends JFrame {
     }
 
     // Custom components
-    class RoundedPanel extends JPanel {
+    static class RoundedPanel extends JPanel {
         private int radius;
 
         RoundedPanel(int radius) {
@@ -272,7 +272,7 @@ public class WelcomeScreen extends JFrame {
         }
     }
 
-    class RoundedTextField extends JTextField {
+    static class RoundedTextField extends JTextField {
         private int radius;
 
         RoundedTextField(int columns, int radius) {
@@ -299,7 +299,7 @@ public class WelcomeScreen extends JFrame {
         }
     }
 
-    class RoundedPasswordField extends JPasswordField {
+    static class RoundedPasswordField extends JPasswordField {
         private int radius;
 
         RoundedPasswordField(int columns, int radius) {
@@ -326,7 +326,7 @@ public class WelcomeScreen extends JFrame {
         }
     }
 
-    class RoundedButton extends JButton {
+    static class RoundedButton extends JButton {
         private int radius;
 
         RoundedButton(String text, int radius) {

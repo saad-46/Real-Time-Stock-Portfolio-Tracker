@@ -12,6 +12,8 @@ public class Stock {
     private String riskLevel; // Low, Medium, High
     private double high24h;
     private double low24h;
+    // Currency the price is quoted in (ISO code, e.g. "USD"); null = the provider did not say, which blocks trading
+    private String currency;
 
     // Constructor - runs when you create a new Stock object
     // Example: new Stock("AAPL", "Apple Inc.")
@@ -20,10 +22,20 @@ public class Stock {
         this.name = name; // Store the name (ex: "Apple Inc.")
     }
 
+    /** Create a stock with a known price. Example: new Stock("AAPL", "Apple Inc.", 150.50) */
+    public Stock(String symbol, String name, double currentPrice) {
+        this(symbol, name);
+        this.currentPrice = currentPrice;
+    }
+
     // Getter method - returns the stock symbol
     // Example: stock.getSymbol() returns "AAPL"
     public String getSymbol() {
         return symbol; // Return the symbol we stored
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
     }
 
     // Getter method - returns the company name
@@ -76,6 +88,15 @@ public class Stock {
 
     public void setRiskLevel(String riskLevel) {
         this.riskLevel = riskLevel;
+    }
+
+    /** Currency of {@link #getCurrentPrice()} as reported or implied by the provider; null if unknown. */
+    public String getCurrency() {
+        return currency;
+    }
+
+    public void setCurrency(String currency) {
+        this.currency = currency == null || currency.isBlank() ? null : currency.trim().toUpperCase();
     }
 
     public double getHigh24h() {

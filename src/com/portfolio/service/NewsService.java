@@ -11,7 +11,7 @@ public class NewsService {
     private long lastFetchTime = 0;
 
     public NewsService() {
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = Net.client();
         this.cachedNews = new ArrayList<>();
     }
 
@@ -21,7 +21,7 @@ public class NewsService {
             if (!news.isEmpty()) {
                 cachedNews = news;
                 lastFetchTime = System.currentTimeMillis();
-                return cachedNews;
+                return new ArrayList<>(cachedNews);
             }
         } catch (Exception ignored) {
         }
@@ -31,18 +31,56 @@ public class NewsService {
             if (!news.isEmpty()) {
                 cachedNews = news;
                 lastFetchTime = System.currentTimeMillis();
-                return cachedNews;
+                return new ArrayList<>(cachedNews);
             }
         } catch (Exception ignored) {
         }
 
         if (cachedNews.isEmpty())
             cachedNews = getDefaultNews();
-        return cachedNews;
+        return new ArrayList<>(cachedNews);
+    }
+
+    /** Headlines a provider actually returned, or why there are none. Unlike {@link #fetchMarketNews()} it never substitutes built-in text. */
+    public record Live(List<NewsItem> items, String problem) {
+        public Live {
+            items = List.copyOf(items);
+        }
+    }
+
+    /** Blocking network access: call off the Swing event thread. */
+    public Live fetchLive() {
+        boolean gnews = ApiKeyManager.isConfigured(ApiKeyManager.getGNewsKey());
+        boolean newsdata = ApiKeyManager.isConfigured(ApiKeyManager.getNewsDataKey());
+        if (!gnews && !newsdata) {
+            return new Live(List.of(), "News API key not configured");
+        }
+        String problem = "No headlines were returned";
+        if (gnews) {
+            try {
+                List<NewsItem> news = fetchFromGNews();
+                if (!news.isEmpty()) {
+                    return new Live(news, null);
+                }
+            } catch (Exception e) {
+                problem = "GNews unavailable (" + e.getClass().getSimpleName() + ")";
+            }
+        }
+        if (newsdata) {
+            try {
+                List<NewsItem> news = fetchFromNewsData();
+                if (!news.isEmpty()) {
+                    return new Live(news, null);
+                }
+            } catch (Exception e) {
+                problem = "NewsData unavailable (" + e.getClass().getSimpleName() + ")";
+            }
+        }
+        return new Live(List.of(), problem);
     }
 
     public List<NewsItem> getCachedNews() {
-        return cachedNews.isEmpty() ? getDefaultNews() : cachedNews;
+        return cachedNews.isEmpty() ? getDefaultNews() : new ArrayList<>(cachedNews);
     }
 
     public long getLastFetchTime() {
@@ -106,11 +144,15 @@ public class NewsService {
                     item.setSource(sourceName);
                     item.setDescription(description);
                     item.setImageUrl(imageUrl);
+                    int pubIdx = json.indexOf("\"publishedAt\":", titleIdx);
+                    if (pubIdx != -1) {
+                        item.setPublishedAt(extractJsonString(json, pubIdx));
+                    }
                     items.add(item);
                 }
                 searchFrom = titleIdx + title.length() + 20;
             }
-        } catch (Exception ignored) {
+        } catch (RuntimeException ignored) {
         }
         return items;
     }

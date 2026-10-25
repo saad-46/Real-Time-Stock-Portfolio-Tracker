@@ -22,11 +22,10 @@ public class RuleBasedAIAnalysis {
         public String trend;
         public String momentum;
         public String volatility;
-        public String diversificationImpact;
 
         @Override
         public String toString() {
-            return String.format("Score: %d/10 | Rec: %s\n%s", totalScore, recommendation, insight);
+            return String.format("Score: %d/10 | Rec: %s%n%s", totalScore, recommendation, insight);
         }
     }
 
@@ -102,10 +101,7 @@ public class RuleBasedAIAnalysis {
         // 4. Portfolio Diversification Check
         boolean improvesDiversification = checkDiversificationImpact(stock);
         if (improvesDiversification) {
-            score += 3;
-            result.diversificationImpact = "Positive (Reduces Risk)";
-        } else {
-            result.diversificationImpact = "Neutral/Negative (High Concentration)";
+            score += 3; // a holding that reduces concentration raises the score
         }
 
         result.totalScore = score;

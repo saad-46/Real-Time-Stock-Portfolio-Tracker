@@ -2,135 +2,135 @@ package com.portfolio.service;
 
 import com.portfolio.database.WalletDAO;
 import com.portfolio.model.WalletTransaction;
+import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Wallet: cash balance used to pay for purchases and receive sale proceeds.
+ *
+ * The database is the source of truth. Deposits and withdrawals are single database transactions, and trades move
+ * money inside the trade's own transaction (see PortfolioDAO.recordTrade); after any change this class reloads
+ * from the database instead of adjusting its cached numbers by arithmetic.
+ */
 public class WalletService {
-    private WalletDAO walletDAO;
+    private final WalletDAO walletDAO;
     private double balance;
     private double totalDeposited;
     private double totalWithdrawn;
-    private List<WalletTransaction> transactions;
+    private String currency = "INR";
+    private List<WalletTransaction> transactions = new ArrayList<>();
 
     public WalletService() {
         this.walletDAO = new WalletDAO();
-        loadWalletData();
+        reload();
     }
 
-    private void loadWalletData() {
+    /** Re-read balance, totals and history from the database. */
+    public synchronized void reload() {
         try {
             double[] data = walletDAO.getWalletData();
             this.balance = data[0];
             this.totalDeposited = data[1];
             this.totalWithdrawn = data[2];
+            this.currency = walletDAO.getCurrency();
             this.transactions = walletDAO.loadAllTransactions();
         } catch (Exception e) {
             System.err.println("⚠️ Could not load wallet data: " + e.getMessage());
         }
     }
 
-    public double getBalance() {
+    /**
+     * The one currency every wallet amount is in (ISO code, default INR for wallets that predate this setting).
+     * Trades in any other currency are converted at a validated exchange rate or blocked.
+     */
+    public synchronized String getCurrency() {
+        return currency;
+    }
+
+    /**
+     * Set the wallet currency; only possible while the wallet is empty and has no history.
+     *
+     * @return false if the wallet already has money or history (nothing changed)
+     */
+    public synchronized boolean setCurrency(String newCurrency) {
+        if (newCurrency == null || !newCurrency.trim().matches("[A-Za-z]{3}")) {
+            return false;
+        }
+        try {
+            boolean ok = walletDAO.setCurrencyIfPristine(newCurrency);
+            reload();
+            return ok;
+        } catch (Exception e) {
+            System.err.println("❌ Could not set the wallet currency: " + e.getMessage());
+            return false;
+        }
+    }
+
+    public synchronized double getBalance() {
         return balance;
     }
 
-    public double getTotalDeposited() {
+    public synchronized double getTotalDeposited() {
         return totalDeposited;
     }
 
-    public double getTotalWithdrawn() {
+    public synchronized double getTotalWithdrawn() {
         return totalWithdrawn;
     }
 
-    public List<WalletTransaction> getTransactions() {
-        return transactions;
+    /** Wallet history, newest first. */
+    public synchronized List<WalletTransaction> getTransactions() {
+        return new ArrayList<>(transactions);
     }
 
-    public boolean addFunds(double amount, String method) {
-        if (amount <= 0)
+    /** Whole cents, half-up; NaN/infinite/huge values become 0 so they are rejected. */
+    public static double cents(double amount) {
+        if (Double.isNaN(amount) || Double.isInfinite(amount) || Math.abs(amount) > 1e12) {
+            return 0;
+        }
+        return java.math.BigDecimal.valueOf(amount).setScale(2, java.math.RoundingMode.HALF_UP).doubleValue();
+    }
+
+    public synchronized boolean addFunds(double rawAmount, String method) {
+        double amount = cents(rawAmount);
+        if (!(amount > 0)) {
             return false;
-
-        this.balance += amount;
-        this.totalDeposited += amount;
-
+        }
         try {
-            walletDAO.updateWalletData(balance, totalDeposited, totalWithdrawn);
-
-            String desc = "Added funds via " + method;
-            WalletTransaction tx = new WalletTransaction("DEPOSIT", amount, balance, desc);
-            walletDAO.logTransaction(tx);
-            transactions.add(0, tx); // Add to top of list
-
-            System.out.println("✅ Added ₹" + amount + " to wallet via " + method);
-            return true;
+            boolean ok = walletDAO.applyCashMovement(true, amount, "Added funds via " + method);
+            if (ok) {
+                System.out.println("✅ Added ₹" + amount + " to wallet via " + method);
+            }
+            reload();
+            return ok;
         } catch (Exception e) {
             System.err.println("❌ Failed to add funds: " + e.getMessage());
-            // Revert on failure
-            this.balance -= amount;
-            this.totalDeposited -= amount;
+            reload();
             return false;
         }
     }
 
-    public boolean withdrawFunds(double amount) {
-        if (amount <= 0 || amount > balance)
+    public synchronized boolean withdrawFunds(double rawAmount) {
+        return withdrawFunds(rawAmount, "Withdrawal to bank account");
+    }
+
+    /** Withdraw whole cents with an honest description for the wallet history. */
+    public synchronized boolean withdrawFunds(double rawAmount, String description) {
+        double amount = cents(rawAmount);
+        if (!(amount > 0) || amount > cents(balance)) {
             return false;
-
-        this.balance -= amount;
-        this.totalWithdrawn += amount;
-
+        }
         try {
-            walletDAO.updateWalletData(balance, totalDeposited, totalWithdrawn);
-
-            String desc = "Withdrawal to bank account";
-            WalletTransaction tx = new WalletTransaction("WITHDRAW", amount, balance, desc);
-            walletDAO.logTransaction(tx);
-            transactions.add(0, tx); // Add to top of list
-
-            System.out.println("✅ Withdrew ₹" + amount + " from wallet");
-            return true;
+            boolean ok = walletDAO.applyCashMovement(false, amount, description);
+            if (ok) {
+                System.out.println("✅ Withdrew ₹" + amount + " from wallet");
+            }
+            reload();
+            return ok;
         } catch (Exception e) {
             System.err.println("❌ Failed to withdraw funds: " + e.getMessage());
-            // Revert
-            this.balance += amount;
-            this.totalWithdrawn -= amount;
+            reload();
             return false;
-        }
-    }
-
-    public boolean processStockPurchase(double totalCost, String symbol, int quantity) {
-        if (totalCost > balance)
-            return false;
-
-        this.balance -= totalCost;
-
-        try {
-            walletDAO.updateWalletData(balance, totalDeposited, totalWithdrawn);
-
-            String desc = "Bought " + quantity + " shares of " + symbol;
-            WalletTransaction tx = new WalletTransaction("STOCK BUY", totalCost, balance, desc);
-            walletDAO.logTransaction(tx);
-            transactions.add(0, tx);
-
-            return true;
-        } catch (Exception e) {
-            System.err.println("❌ Failed to process stock purchase in wallet: " + e.getMessage());
-            this.balance += totalCost;
-            return false;
-        }
-    }
-
-    public void processStockSale(double totalProceeds, String symbol, int quantity) {
-        this.balance += totalProceeds;
-
-        try {
-            walletDAO.updateWalletData(balance, totalDeposited, totalWithdrawn);
-
-            String desc = "Sold " + quantity + " shares of " + symbol;
-            WalletTransaction tx = new WalletTransaction("STOCK SELL", totalProceeds, balance, desc);
-            walletDAO.logTransaction(tx);
-            transactions.add(0, tx);
-        } catch (Exception e) {
-            System.err.println("❌ Failed to process stock sale in wallet: " + e.getMessage());
-            this.balance -= totalProceeds;
         }
     }
 }

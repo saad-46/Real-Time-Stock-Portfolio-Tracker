@@ -20,7 +20,7 @@ public class GroqAIService {
     private final List<Message> conversationHistory;
 
     public GroqAIService(PortfolioService portfolioService) {
-        this.httpClient = HttpClient.newHttpClient();
+        this.httpClient = Net.client();
         this.portfolioService = portfolioService;
         this.conversationHistory = new ArrayList<>();
     }
@@ -54,7 +54,7 @@ public class GroqAIService {
         }
         json.append("], \"temperature\": 0.7, \"max_tokens\": 150 }");
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
                 .uri(URI.create(API_URL))
                 .header("Authorization", "Bearer " + API_KEY)
                 .header("Content-Type", "application/json")
@@ -88,7 +88,7 @@ public class GroqAIService {
                 "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.6, \"max_tokens\": 800 }",
                 escapeJson(prompt));
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
                 .uri(URI.create(API_URL))
                 .header("Authorization", "Bearer " + API_KEY)
                 .header("Content-Type", "application/json")
@@ -102,79 +102,181 @@ public class GroqAIService {
         return parseAIResponse(response.body());
     }
 
-    public String executeAction(String userIntent) {
+    /** What the assistant understood the user to want. Nothing has happened yet; see {@link #perform}. */
+    public static final class AIAction {
+        public enum Kind { SELL_ALL, BUY, SELL, SHOW_PORTFOLIO, UNCLEAR }
+
+        public final Kind kind;
+        public final String symbol;
+        public final int quantity;
+        public final double price;
+        public final String message;
+
+        AIAction(Kind kind, String symbol, int quantity, double price, String message) {
+            this.kind = kind;
+            this.symbol = symbol;
+            this.quantity = quantity;
+            this.price = price;
+            this.message = message;
+        }
+
+        /** True for actions that change money or holdings; the caller must show {@link #describe} and get a yes first. */
+        public boolean requiresConfirmation() {
+            return kind == Kind.SELL_ALL || kind == Kind.BUY || kind == Kind.SELL;
+        }
+
+        /** Plain-language description of exactly what will be done, for the confirmation dialog. */
+        public String describe(PortfolioService portfolio) {
+            switch (kind) {
+                case SELL_ALL:
+                    return "SELL EVERYTHING: all shares of all " + portfolio.getAllPortfolioItems().size()
+                            + " holding(s), each at a live market quote obtained at execution time.";
+                case BUY:
+                    return String.format("BUY %d shares of %s at %.2f per share (the price from your request, in %s), paid from your wallet.",
+                            quantity, symbol, price, portfolio.getBaseCurrency());
+                case SELL:
+                    return String.format("SELL %d shares of %s at a live market quote obtained at execution time.", quantity, symbol);
+                default:
+                    return message == null ? "" : message;
+            }
+        }
+    }
+
+    static final int MAX_AI_QUANTITY = 1_000_000;
+
+    static boolean isSellAllIntent(String userIntent) {
+        String t = userIntent == null ? "" : userIntent.toLowerCase();
+        return t.contains("sell all") || t.contains("clear portfolio") || t.contains("remove all");
+    }
+
+    /**
+     * Strictly interpret the model's reply (a JSON object). Only an explicit "action" of buy / sell / show_portfolio is
+     * accepted; the symbol must look like a ticker, the quantity a positive whole number (capped) and a buy needs a
+     * positive finite price. Anything else is UNCLEAR, never a guess.
+     */
+    static AIAction interpret(String aiReply) {
         try {
-            String lowerIntent = userIntent.toLowerCase();
-            // Basic hardcoded logic for common intents
-            if (lowerIntent.contains("sell all") || lowerIntent.contains("clear portfolio") ||
-                    lowerIntent.contains("remove all")) {
-                StringBuilder result = new StringBuilder("✅ Selling all stocks:\n");
+            String reply = aiReply == null ? "" : aiReply;
+            int open = reply.indexOf('{');
+            int close = reply.lastIndexOf('}');
+            if (open < 0 || close <= open) {
+                return unclear("I couldn't understand that command.");
+            }
+            org.json.JSONObject o = new org.json.JSONObject(reply.substring(open, close + 1));
+            String action = o.optString("action", "").trim().toLowerCase();
+            if (action.equals("show_portfolio")) {
+                return new AIAction(AIAction.Kind.SHOW_PORTFOLIO, null, 0, 0, null);
+            }
+            if (!action.equals("buy") && !action.equals("sell")) {
+                return unclear("I couldn't understand that command.");
+            }
+            String symbol = o.optString("symbol", "").trim().toUpperCase();
+            if (!symbol.matches("[A-Z0-9][A-Z0-9.\\-]{0,11}")) {
+                return unclear("❌ Could not understand the " + action + " command. Please specify: '"
+                        + (action.equals("buy") ? "Buy [quantity] [symbol] at [price]" : "Sell [quantity] [symbol]") + "'");
+            }
+            int quantity = o.optInt("quantity", 0);
+            if (quantity <= 0 || quantity > MAX_AI_QUANTITY) {
+                return unclear("❌ The quantity must be a whole number from 1 to " + MAX_AI_QUANTITY + ".");
+            }
+            if (action.equals("sell")) {
+                return new AIAction(AIAction.Kind.SELL, symbol, quantity, 0, null);
+            }
+            double price = o.optDouble("price", 0);
+            if (!(price > 0) || Double.isInfinite(price)) {
+                return unclear("❌ No price was given. Please say: 'Buy [quantity] [symbol] at [price]'");
+            }
+            return new AIAction(AIAction.Kind.BUY, symbol, quantity, price, null);
+        } catch (org.json.JSONException e) {
+            return unclear("I couldn't understand that command.");
+        }
+    }
+
+    private static AIAction unclear(String message) {
+        return new AIAction(AIAction.Kind.UNCLEAR, null, 0, 0, message);
+    }
+
+    /**
+     * Work out what the user wants WITHOUT doing it (one model call for anything but "sell all"). The caller shows
+     * {@link AIAction#describe} and, for actions that {@link AIAction#requiresConfirmation}, asks first.
+     */
+    public AIAction planAction(String userIntent) throws Exception {
+        if (isSellAllIntent(userIntent)) {
+            return new AIAction(AIAction.Kind.SELL_ALL, null, 0, 0, null);
+        }
+        String prompt = "Extract trading action from: \"" + userIntent
+                + "\". Respond ONLY with JSON: {\"action\":\"buy|sell|show_portfolio\",\"symbol\":\"TICKER\",\"quantity\":10,\"price\":150}";
+        String json = String.format(
+                "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.1, \"max_tokens\": 100 }",
+                escapeJson(prompt));
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(API_URL))
+                .header("Authorization", "Bearer " + API_KEY)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json")
+                .timeout(java.time.Duration.ofSeconds(30))
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+        if (response.statusCode() != 200) {
+            // the status only: the body can echo request details
+            throw new Exception("The AI service returned HTTP " + response.statusCode());
+        }
+        return interpret(parseAIResponse(response.body()));
+    }
+
+    /** Carry out a plan through the normal validated trading rules. Reports what actually happened. */
+    public String perform(AIAction action) {
+        switch (action.kind) {
+            case SELL_ALL: {
                 List<PortfolioItem> items = new ArrayList<>(portfolioService.getPortfolioItems());
                 if (items.isEmpty())
                     return "❌ Portfolio is already empty.";
+                StringBuilder result = new StringBuilder("✅ Selling all stocks:\n");
                 for (PortfolioItem item : items) {
-                    portfolioService.sellAllStock(item.getStock().getSymbol());
-                    result.append("• Sold all of ").append(item.getStock().getSymbol()).append("\n");
+                    String sym = item.getStock().getSymbol();
+                    // Each sale needs a validated live quote; report what actually happened, not what was asked.
+                    if (portfolioService.sellAllStock(sym)) {
+                        result.append("• Sold all of ").append(sym).append("\n");
+                    } else {
+                        result.append("• NOT sold: ").append(sym).append(" (")
+                                .append(portfolioService.getLastTradeProblem()).append(")\n");
+                    }
                 }
                 return result.toString();
             }
-
-            // AI Intent extraction
-            String prompt = "Extract trading action from: \"" + userIntent
-                    + "\". Respond ONLY with JSON: {\"action\":\"buy|sell|show_portfolio\",\"symbol\":\"TICKER\",\"quantity\":10,\"price\":150}";
-            String json = String.format(
-                    "{ \"model\": \"llama-3.3-70b-versatile\", \"messages\": [{\"role\":\"user\",\"content\":\"%s\"}], \"temperature\": 0.1, \"max_tokens\": 100 }",
-                    escapeJson(prompt));
-
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(API_URL))
-                    .header("Authorization", "Bearer " + API_KEY)
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString(json))
-                    .build();
-
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            // Check for errors
-            if (response.statusCode() != 200) {
-                throw new Exception("API returned status " + response.statusCode() + ": " + response.body());
-            }
-
-            String aiResp = parseAIResponse(response.body());
-
-            // Simple manual extraction from AI JSON response
-            if (aiResp.contains("\"buy\"") || aiResp.contains("buy")) {
-                String symbol = extractField(aiResp, "symbol");
-                String qtyStr = extractField(aiResp, "quantity");
-                String priceStr = extractField(aiResp, "price");
-
-                if (symbol.equals("0") || qtyStr.equals("0")) {
-                    return "❌ Could not understand the buy command. Please specify: 'Buy [quantity] [symbol] at [price]'";
+            case BUY:
+                try {
+                    portfolioService.buyStock(action.symbol, action.symbol, action.quantity, action.price);
+                } catch (IllegalArgumentException | IllegalStateException e) {
+                    // includes InsufficientFundsException: nothing was bought and no money moved
+                    return "❌ Not bought: " + e.getMessage();
                 }
-
-                int qty = Integer.parseInt(qtyStr);
-                double price = Double.parseDouble(priceStr);
-                portfolioService.buyStock(symbol, symbol, qty, price);
-                return String.format("✅ Bought %d %s @ ₹%.2f", qty, symbol, price);
-            } else if (aiResp.contains("\"sell\"") || aiResp.contains("sell")) {
-                String symbol = extractField(aiResp, "symbol");
-                String qtyStr = extractField(aiResp, "quantity");
-
-                if (symbol.equals("0")) {
-                    return "❌ Could not understand the sell command. Please specify: 'Sell [quantity] [symbol]'";
+                return String.format("✅ Bought %d %s @ %.2f", action.quantity, action.symbol, action.price);
+            case SELL:
+                if (!portfolioService.sellStock(action.symbol, action.quantity)) {
+                    return "❌ Not sold: " + portfolioService.getLastTradeProblem();
                 }
-
-                int qty = Integer.parseInt(qtyStr);
-                portfolioService.sellStock(symbol, qty);
-                return String.format("✅ Sold %d %s", qty, symbol);
-            } else if (aiResp.contains("show_portfolio") || aiResp.contains("portfolio")) {
+                return String.format("✅ Sold %d %s", action.quantity, action.symbol);
+            case SHOW_PORTFOLIO:
                 return buildPortfolioContext();
-            }
+            default:
+                return action.message != null ? action.message
+                        : "❌ I couldn't understand that command. Try: 'Buy 10 AAPL at 150' or 'Sell 5 GOOGL'";
+        }
+    }
 
-            return "❌ I couldn't understand that command. Try: 'Buy 10 AAPL at 150' or 'Sell 5 GOOGL'";
+    /**
+     * Plan and perform in one step WITHOUT any confirmation.
+     *
+     * @deprecated unsafe for interactive use: call {@link #planAction}, show {@link AIAction#describe}, and only then
+     *             {@link #perform}. The dashboard does.
+     */
+    @Deprecated
+    public String executeAction(String userIntent) {
+        try {
+            return perform(planAction(userIntent));
         } catch (Exception e) {
-            e.printStackTrace();
             return "❌ Error: " + e.getMessage();
         }
     }
@@ -184,9 +286,13 @@ public class GroqAIService {
             double totalValue = portfolioService.calculateCurrentValue();
             double profitLoss = portfolioService.calculateProfitLoss();
             StringBuilder context = new StringBuilder();
-            context.append(String.format("Value: ₹%.2f, P/L: ₹%.2f\n", totalValue, profitLoss));
+            context.append(String.format("Value: ₹%.2f, P/L: ₹%.2f%n", totalValue, profitLoss));
+            if (portfolioService.profitLossChecked().approximate()) {
+                context.append("(These totals are approximate: fixed exchange rates are in use because live rates are unavailable.)")
+                        .append(System.lineSeparator());
+            }
             for (PortfolioItem item : portfolioService.getPortfolioItems()) {
-                context.append(String.format("- %s: %d shares @ ₹%.2f\n",
+                context.append(String.format("- %s: %d shares @ ₹%.2f%n",
                         item.getStock().getSymbol(), item.getQuantity(), item.getStock().getCurrentPrice()));
             }
             return context.toString();
@@ -271,21 +377,21 @@ public class GroqAIService {
      */
     public String analyzeStock(String symbol, double currentPrice) throws Exception {
         String prompt = String.format(
-            "Analyze %s stock currently trading at ₹%.2f.\n\n" +
-            "Provide analysis in this EXACT format with bullet points:\n\n" +
-            "📊 CURRENT POSITION:\n" +
-            "• [Brief market position statement]\n\n" +
-            "💪 KEY STRENGTHS:\n" +
-            "• [Strength 1]\n" +
-            "• [Strength 2]\n\n" +
-            "⚠️ RISKS:\n" +
-            "• [Risk 1]\n" +
-            "• [Risk 2]\n\n" +
-            "🎯 OUTLOOK:\n" +
-            "• Short-term: [Brief outlook]\n" +
-            "• Long-term: [Brief outlook]\n\n" +
-            "💡 RECOMMENDATION:\n" +
-            "• [Clear recommendation]\n\n" +
+            "Analyze %s stock currently trading at ₹%.2f.%n%n" +
+            "Provide analysis in this EXACT format with bullet points:%n%n" +
+            "📊 CURRENT POSITION:%n" +
+            "• [Brief market position statement]%n%n" +
+            "💪 KEY STRENGTHS:%n" +
+            "• [Strength 1]%n" +
+            "• [Strength 2]%n%n" +
+            "⚠️ RISKS:%n" +
+            "• [Risk 1]%n" +
+            "• [Risk 2]%n%n" +
+            "🎯 OUTLOOK:%n" +
+            "• Short-term: [Brief outlook]%n" +
+            "• Long-term: [Brief outlook]%n%n" +
+            "💡 RECOMMENDATION:%n" +
+            "• [Clear recommendation]%n%n" +
             "IMPORTANT: Use professional financial terminology. Do NOT use 'Buy' or 'Sell'. " +
             "Use terms like 'Strong position', 'Consider adding', 'Reduce exposure', etc. Keep it concise.",
             symbol, currentPrice
@@ -296,7 +402,7 @@ public class GroqAIService {
             escapeJson(prompt)
         );
 
-        HttpRequest request = HttpRequest.newBuilder()
+        HttpRequest request = HttpRequest.newBuilder().timeout(Net.REQUEST_TIMEOUT)
             .uri(URI.create(API_URL))
             .header("Authorization", "Bearer " + API_KEY)
             .header("Content-Type", "application/json")

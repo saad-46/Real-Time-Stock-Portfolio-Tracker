@@ -1,110 +1,154 @@
 package com.portfolio.service;
 
 import com.portfolio.model.Stock;
+import com.portfolio.service.PriceUnavailableException.Reason;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.function.Function;
 
 /**
- * MultiSourceStockService - Failover aggregator for stock price APIs.
- * Tries sources in order: Finnhub → Twelve Data → Alpha Vantage.
- * If one API fails or rate-limits, automatically tries the next.
- * 
- * This gives access to virtually unlimited stock symbols across all major
- * exchanges.
+ * MultiSourceStockService - failover aggregator for stock price APIs.
+ * Tries sources in order: Finnhub → Twelve Data → Alpha Vantage. If one provider fails or rate-limits, the next is
+ * tried. The first provider that reports a real quote wins.
+ *
+ * It never invents a price: if no provider produced a quote the call fails with a PriceUnavailableException that
+ * keeps the most informative reason (a missing key is reported only when nothing else went wrong), or returns null
+ * when the providers that answered all said the symbol does not exist.
  */
 public class MultiSourceStockService implements StockPriceService {
 
     private final FinnhubService finnhubService;
     private final TwelveDataService twelveDataService;
     private final AlphaVantageService alphaVantageService;
+    private final List<StockPriceService> chain;
 
     public MultiSourceStockService() {
-        this.finnhubService = new FinnhubService();
-        this.twelveDataService = new TwelveDataService();
-        this.alphaVantageService = new AlphaVantageService();
+        this(new FinnhubService(), new TwelveDataService(), new AlphaVantageService());
     }
 
-    /**
-     * Gets the current price using failover chain:
-     * Finnhub (60/min) → Twelve Data (800/day) → Alpha Vantage (25/day)
-     */
+    /** Package-private: lets tests supply fake providers. */
+    MultiSourceStockService(FinnhubService finnhub, TwelveDataService twelveData, AlphaVantageService alphaVantage) {
+        this.finnhubService = finnhub;
+        this.twelveDataService = twelveData;
+        this.alphaVantageService = alphaVantage;
+        this.chain = List.of(finnhub, twelveData, alphaVantage);
+    }
+
+    /** Failover over arbitrary providers (used by tests). */
+    MultiSourceStockService(List<StockPriceService> providers) {
+        this.finnhubService = null;
+        this.twelveDataService = null;
+        this.alphaVantageService = null;
+        this.chain = List.copyOf(providers);
+    }
+
     @Override
-    public double getCurrentPrice(String symbol) throws Exception {
-        // Try 1: Finnhub (Primary)
-        try {
-            return finnhubService.getCurrentPrice(symbol);
-        } catch (Exception ignored) {
-        }
-
-        // Try 2: Twelve Data (Secondary)
-        try {
-            return twelveDataService.getCurrentPrice(symbol);
-        } catch (Exception ignored) {
-        }
-
-        // Try 3: Alpha Vantage (Last resort)
-        try {
-            return alphaVantageService.getCurrentPrice(symbol);
-        } catch (Exception ignored) {
-        }
-
-        throw new Exception("All stock APIs failed for " + symbol + ". Please try again later.");
+    public Stock getStock(String symbol) {
+        return failover(p -> relabel(p.getStock(providerSymbol(p, symbol)), symbol), "price for " + symbol);
     }
 
-    /**
-     * Updates stock price using failover chain.
-     */
+    /** The symbol this provider understands for the listing, or an "unsupported" failure the failover moves past. */
+    private String providerSymbol(StockPriceService provider, String symbol) {
+        SymbolResolver.Provider kind = provider == alphaVantageService ? SymbolResolver.Provider.ALPHA_VANTAGE
+                : provider == twelveDataService ? SymbolResolver.Provider.TWELVE_DATA
+                : provider == finnhubService ? SymbolResolver.Provider.FINNHUB : null;
+        if (kind == null) {
+            return symbol; // a provider this class does not know (tests): the symbol as entered
+        }
+        SymbolResolver.Instrument instrument;
+        try {
+            instrument = SymbolResolver.parse(symbol);
+        } catch (IllegalArgumentException e) {
+            throw new PriceUnavailableException(Reason.SYMBOL_NOT_FOUND, e.getMessage());
+        }
+        return SymbolResolver.forProvider(instrument, kind).orElseThrow(() -> new PriceUnavailableException(Reason.UNSUPPORTED,
+                kind + " does not cover " + SymbolResolver.describe(instrument)));
+    }
+
+    /** Quotes come back under the provider's spelling; the portfolio keeps the symbol it stored. */
+    private static Stock relabel(Stock quote, String storedSymbol) {
+        if (quote != null && !storedSymbol.equalsIgnoreCase(quote.getSymbol())) {
+            quote.setSymbol(storedSymbol.trim().toUpperCase(java.util.Locale.ROOT));
+        }
+        return quote;
+    }
+
     @Override
-    public void updateStockPrice(Stock stock) throws Exception {
-        // Try 1: Finnhub
-        try {
-            finnhubService.updateStockPrice(stock);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        // Try 2: Twelve Data
-        try {
-            twelveDataService.updateStockPrice(stock);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        // Try 3: Alpha Vantage
-        try {
-            alphaVantageService.updateStockPrice(stock);
-            return;
-        } catch (Exception ignored) {
-        }
-
-        throw new Exception("All stock APIs failed to update " + stock.getSymbol());
+    public boolean isValidStock(String symbol) {
+        return getStock(symbol) != null;
     }
 
-    /**
-     * Gets historical data. Tries Twelve Data first (better historical), then Alpha
-     * Vantage.
-     */
-    public String getHistoricalData(String symbol) throws Exception {
-        // Try Twelve Data first (better for historical data)
-        try {
-            return twelveDataService.getHistoricalData(symbol, 30);
-        } catch (Exception e) {
-            System.out.println("⚠️ TwelveData historical failed for " + symbol);
-        }
-
-        // Fallback to Alpha Vantage
-        try {
-            return alphaVantageService.getHistoricalData(symbol);
-        } catch (Exception e) {
-            System.out.println("⚠️ AlphaVantage historical failed for " + symbol);
-        }
-
-        throw new Exception("Historical data unavailable for " + symbol);
+    /** Daily history: the first provider that offers it. Failures are reported, never replaced by sample data. */
+    @Override
+    public String getHistoricalData(String symbol) {
+        return getHistoricalData(symbol, 30);
     }
 
-    /**
-     * Search for stocks. Uses Finnhub (broader coverage).
-     */
-    public String searchStocks(String query) throws Exception {
+    @Override
+    public String getHistoricalData(String symbol, int days) {
+        // Twelve Data first (better history), then Alpha Vantage; Finnhub's free tier has none.
+        List<StockPriceService> order = new ArrayList<>();
+        if (twelveDataService != null) {
+            order.add(twelveDataService);
+            order.add(alphaVantageService);
+        } else {
+            order.addAll(chain);
+        }
+        PriceUnavailableException first = null;
+        for (StockPriceService p : order) {
+            try {
+                return p.getHistoricalData(providerSymbol(p, symbol), days);
+            } catch (PriceUnavailableException e) {
+                System.out.println("⚠️ " + p.getClass().getSimpleName() + " historical failed for " + symbol + ": " + e.getReason());
+                if (first == null || first.getReason() == Reason.NO_KEY) {
+                    first = e;
+                }
+            }
+        }
+        throw first != null ? first
+                : new PriceUnavailableException(Reason.UNSUPPORTED, "Historical data unavailable for " + symbol);
+    }
+
+    /** Search for stocks. Uses Finnhub (broader coverage). */
+    public String searchStocks(String query) {
+        if (finnhubService == null) {
+            throw new PriceUnavailableException(Reason.UNSUPPORTED, "Search is not available");
+        }
         return finnhubService.searchStocks(query);
+    }
+
+    private Stock failover(Function<StockPriceService, Stock> call, String what) {
+        PriceUnavailableException best = null;
+        boolean someoneSaidNotFound = false;
+        for (StockPriceService provider : chain) {
+            try {
+                Stock s = call.apply(provider);
+                if (s != null) {
+                    return s;
+                }
+                someoneSaidNotFound = true;
+            } catch (PriceUnavailableException e) {
+                // keep the most useful failure: anything but "no key" beats "no key"
+                if (best == null || (best.getReason() == Reason.NO_KEY && e.getReason() != Reason.NO_KEY)) {
+                    best = e;
+                }
+            }
+        }
+        // A provider that answered "no such symbol" is more informative than one that merely had no key.
+        if (someoneSaidNotFound && (best == null || best.getReason() == Reason.NO_KEY)) {
+            return null;
+        }
+        if (best != null && best.getReason() == Reason.NO_KEY) {
+            // Every provider lacked a key: say so once, naming all the settings, instead of just the first provider's.
+            throw new PriceUnavailableException(Reason.NO_KEY, "No API key configured for any price provider. Set "
+                    + "FINNHUB_API_KEY, TWELVEDATA_API_KEY or ALPHAVANTAGE_API_KEY (environment variable or "
+                    + ApiKeyManager.DEFAULT_CONFIG_FILE + ").");
+        }
+        if (best != null) {
+            throw best;
+        }
+        throw new PriceUnavailableException(Reason.PROVIDER_MESSAGE, "No price provider is configured for " + what);
     }
 
     // Expose individual services for advanced use

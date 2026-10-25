@@ -1,62 +1,143 @@
-package com.portfolio.model; // This file belongs to the "model" folder
+package com.portfolio.model;
 
-import java.time.LocalDateTime;  // Import Java's date/time class to record when transactions happen
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
-// This class represents a buy or sell transaction
-// Example: "Bought 10 shares of Apple at $150 on Jan 15, 2024"
+/**
+ * Transaction class represents a buy or sell transaction in the portfolio.
+ * Tracks the history of all stock trades.
+ */
 public class Transaction {
-    // Private variables - the transaction details
-    private String symbol;              // Stock symbol (ex: "AAPL")
-    private String type;                // Transaction type: "BUY" or "SELL"
-    private int quantity;               // How many shares (ex: 10)
-    private double price;               // Price per share (ex: $150)
-    private LocalDateTime timestamp;    // When this happened (ex: 2024-01-15 10:30:00)
+    // Unique ID in database
+    private int id;
+    // Stock symbol (ex: "AAPL")
+    private String symbol;
+    // Type of transaction: "BUY" or "SELL"
+    private String type;
+    // Number of shares traded
+    private int quantity;
+    // Price per share at time of transaction
+    private double price;
+    // When the transaction happened
+    private LocalDateTime timestamp;
+    // Realized profit/loss for SELL transactions; null for BUY
+    private Double realizedPl;
 
-    // Constructor - creates a new transaction record
-    // Example: new Transaction("AAPL", "BUY", 10, 150.0) means "Bought 10 Apple shares at $150"
+    /**
+     * Constructor for creating a new transaction.
+     * Example: Transaction buy = new Transaction("AAPL", "BUY", 10, 150.0);
+     */
     public Transaction(String symbol, String type, int quantity, double price) {
-        this.symbol = symbol;           // Store stock symbol (ex: "AAPL")
-        this.type = type;               // Store type (ex: "BUY")
-        this.quantity = quantity;       // Store quantity (ex: 10)
-        this.price = price;             // Store price (ex: $150)
-        this.timestamp = LocalDateTime.now();  // Record current date/time automatically
+        this.symbol = symbol;
+        this.type = type;
+        this.quantity = quantity;
+        this.price = price;
+        this.timestamp = LocalDateTime.now();
     }
 
-    // Getter - returns the stock symbol
-    // Example: transaction.getSymbol() returns "AAPL"
+    /**
+     * Constructor with timestamp (used when loading from database).
+     */
+    public Transaction(int id, String symbol, String type, int quantity, double price, LocalDateTime timestamp) {
+        this.id = id;
+        this.symbol = symbol;
+        this.type = type;
+        this.quantity = quantity;
+        this.price = price;
+        this.timestamp = timestamp;
+    }
+
+    /** Loading from database, including realized P/L (null for BUY). */
+    public Transaction(int id, String symbol, String type, int quantity, double price, LocalDateTime timestamp, Double realizedPl) {
+        this(id, symbol, type, quantity, price, timestamp);
+        this.realizedPl = realizedPl;
+    }
+
+    /** New transaction carrying its realized P/L (SELL). */
+    public Transaction(String symbol, String type, int quantity, double price, Double realizedPl) {
+        this(symbol, type, quantity, price);
+        this.realizedPl = realizedPl;
+    }
+
+    /** New transaction with an explicit time (lets the service use an injectable clock). */
+    public Transaction(String symbol, String type, int quantity, double price, Double realizedPl, LocalDateTime timestamp) {
+        this(symbol, type, quantity, price, realizedPl);
+        this.timestamp = timestamp;
+    }
+
+    public Double getRealizedPl() {
+        return realizedPl;
+    }
+
+    // Getters and Setters
+    public int getId() {
+        return id;
+    }
+
+    public void setId(int id) {
+        this.id = id;
+    }
+
     public String getSymbol() {
-        return symbol;  // Return the stock symbol
+        return symbol;
     }
 
-    // Getter - returns the transaction type
-    // Example: transaction.getType() returns "BUY"
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+    }
+
     public String getType() {
-        return type;  // Return "BUY" or "SELL"
+        return type;
     }
 
-    // Getter - returns how many shares
-    // Example: transaction.getQuantity() returns 10
+    public void setType(String type) {
+        this.type = type;
+    }
+
     public int getQuantity() {
-        return quantity;  // Return number of shares
+        return quantity;
     }
 
-    // Getter - returns the price per share
-    // Example: transaction.getPrice() returns 150.0
+    public void setQuantity(int quantity) {
+        this.quantity = quantity;
+    }
+
     public double getPrice() {
-        return price;  // Return the price
+        return price;
     }
 
-    // Getter - returns when this transaction happened
-    // Example: transaction.getTimestamp() returns "2024-01-15T10:30:00"
+    public void setPrice(double price) {
+        this.price = price;
+    }
+
     public LocalDateTime getTimestamp() {
-        return timestamp;  // Return the date/time
+        return timestamp;
     }
 
-    // Override toString - formats the transaction for display
-    // Example: "BUY 10 AAPL @ $150.0 on 2024-01-15T10:30:00"
+    public void setTimestamp(LocalDateTime timestamp) {
+        this.timestamp = timestamp;
+    }
+
+    /**
+     * Calculate total value of transaction.
+     * Formula: quantity * price
+     */
+    public double getTransactionValue() {
+        return quantity * price;
+    }
+
+    /**
+     * Get formatted timestamp string.
+     * Example: "2024-01-15 10:30:45"
+     */
+    public String getFormattedTimestamp() {
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+        return timestamp.format(formatter);
+    }
+
     @Override
     public String toString() {
-        return type + " " + quantity + " " + symbol +     // "BUY 10 AAPL"
-               " @ $" + price + " on " + timestamp;       // "@ $150.0 on 2024-01-15T10:30:00"
+        return "Transaction [symbol=" + symbol + ", type=" + type + ", quantity=" + quantity + ", price=" + price
+                + ", timestamp=" + timestamp + "]";
     }
 }

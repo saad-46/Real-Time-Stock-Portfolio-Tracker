@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Reviewed and accepted SpotBugs findings (see docs/audit/DEPENDENCY_AUDIT.md and docs/audit/INTEGRATION_REPORT.md).
+  Every entry is limited to one pattern in named classes; nothing is excluded wholesale.
+-->
+<FindBugsFilter>
+  <!-- DatabaseManager intentionally hands out its single shared JDBC connection. -->
+  <Match><Class name="com.portfolio.database.DatabaseManager"/><Bug pattern="MS_EXPOSE_REP"/></Match>
+  <!-- Swing windows hold a reference to the shared service by design. -->
+  <Match><Class name="~com\.portfolio\.ui\..*"/><Bug pattern="EI_EXPOSE_REP2"/></Match>
+  <!-- Constructor guard throws if the DB is unavailable; no finalizer-sensitive state. The dashboard's constructor
+       builds the whole window and fails fast if the service cannot start. -->
+  <Match><Class name="~com.portfolio.(database.PortfolioDAO|service.PortfolioService|ui.PremiumStockDashboard)"/><Bug pattern="CT_CONSTRUCTOR_THROW"/></Match>
+
+  <!-- jirp-origin design, reviewed: collaborating services share ONE PortfolioService (and its wallet) on purpose;
+       copying it would break the single source of truth for holdings and money. -->
+  <Match>
+    <Class name="~com\.portfolio\.service\.(AIRebalancer|DailyPortfolioScheduler|GroqAIService|RuleBasedAIAnalysis)"/>
+    <Bug pattern="EI_EXPOSE_REP2"/>
+  </Match>
+  <Match><Class name="com.portfolio.service.PortfolioService"/><Method name="getWalletService"/><Bug pattern="EI_EXPOSE_REP"/></Match>
+  <!-- Landing page: these accessors return the page's own Swing controls (button, chart, cards) so that tests and the host
+       window can drive them. They are not copies of data, so EI_EXPOSE_REP does not apply. -->
+  <Match>
+    <Class name="~com\.portfolio\.ui\.(StockVaultLandingPanel|LandingFrame|AuthPanel|HistoryChartPanel)"/>
+    <Method name="~(signInButton|createAccountButton|chart|landing|auth|submitButton|newsCard|themeToggleButton)"/>
+    <Bug pattern="EI_EXPOSE_REP"/>
+  </Match>
+  <!-- Light/dark palettes: the colour fields are deliberately reassigned by ThemeMode before windows are built. -->
+  <Match>
+    <Class name="~com\.portfolio\.ui\.(Theme|LandingPalette)"/>
+    <Bug pattern="MS_SHOULD_BE_FINAL,MS_PKGPROTECT,MS_MUTABLE_ARRAY,MS_CANNOT_BE_FINAL,PA_PUBLIC_PRIMITIVE_ATTRIBUTE"/>
+  </Match>
+  <!-- PortfolioItem wraps a live Stock whose price is refreshed in place; the dashboard reads and updates it. -->
+  <Match><Class name="com.portfolio.model.PortfolioItem"/><Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/></Match>
+  <!-- GmailCredentialService is handed its CredentialStore (a Windows implementation, or an in-memory one in tests) and must use that very instance. -->
+  <Match><Class name="com.portfolio.service.GmailCredentialService"/><Bug pattern="EI_EXPOSE_REP2"/></Match>
+  <!-- NotificationManager is a process-wide singleton. -->
+  <Match><Class name="com.portfolio.service.NotificationManager"/><Bug pattern="MS_EXPOSE_REP"/></Match>
+
+  <!-- PremiumStockDashboard (about 7,000 lines, from jirp): style-level findings with no behavioral effect.
+       Swing handlers deliberately catch Exception so a failed export/render never kills the event thread, and some
+       defensive null checks are redundant. Real defects in this class (encoding, dead stores, format strings,
+       static inner classes) were fixed rather than excluded. -->
+  <Match><Class name="~com\.portfolio\.ui\.PremiumStockDashboard.*"/><Bug pattern="REC_CATCH_EXCEPTION,RCN_REDUNDANT_NULLCHECK_OF_NONNULL_VALUE"/></Match>
+</FindBugsFilter>

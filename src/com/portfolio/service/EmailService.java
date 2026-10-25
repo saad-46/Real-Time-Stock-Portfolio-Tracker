@@ -13,16 +13,45 @@ public class EmailService {
 
     private String smtpHost = "smtp.gmail.com";
     private String smtpPort = "587";
-    private String senderEmail = "stockvault123@gmail.com";
-    // IMPORTANT: This MUST be a Gmail App Password, not your regular password!
-    // Regular Gmail passwords don't work with SMTP anymore.
-    // To generate an App Password:
-    // 1. Go to https://myaccount.google.com/security
-    // 2. Enable 2-Step Verification if not already enabled
-    // 3. Go to https://myaccount.google.com/apppasswords
-    // 4. Select "Mail" and "Other (Custom name)" - name it "StockVault"
-    // 5. Copy the 16-character password (no spaces) and paste it below
-    private String senderPassword = ApiKeyManager.getGmailAppPassword();
+    /** The application's sender account. */
+    public static final String DEFAULT_SENDER = "stockvault104@gmail.com";
+    /** The previous sender; its App Password was revoked, so it is never used. */
+    static final String REVOKED_SENDER = "stockvault123@gmail.com";
+
+    private String senderEmail = resolveSender(ApiKeyManager.get("GMAIL_ADDRESS"));
+    // The App Password comes from GMAIL_APP_PASSWORD (environment, stockvault.local.properties or .env), which takes precedence,
+    // or from Windows Credential Manager (see GmailCredentialService). It is never stored in source files.
+    private String senderPassword = normalizePassword(ApiKeyManager.getGmailAppPassword());
+
+    /** The configured address, or the default sender when none is configured or the revoked old account is named. */
+    public static String resolveSender(String configured) {
+        if (!ApiKeyManager.isConfigured(configured)) {
+            return DEFAULT_SENDER;
+        }
+        String trimmed = configured.trim();
+        return REVOKED_SENDER.equalsIgnoreCase(trimmed) ? DEFAULT_SENDER : trimmed;
+    }
+
+    /** Google shows App Passwords in groups ("abcd efgh ..."); the spaces are not part of the password. */
+    static String normalizePassword(String password) {
+        return password == null ? null : password.replaceAll("\\s+", "");
+    }
+
+    /** A non-sensitive description of what is wrong with the sender configuration, or null when it looks usable. */
+    public String configurationProblem() {
+        String at = senderEmail == null ? "" : senderEmail.toLowerCase(java.util.Locale.ROOT);
+        if (!at.matches("[^@\\s]+@(gmail|googlemail)\\.com")) {
+            return "The sender address is not a valid Gmail address (check GMAIL_ADDRESS for a typo).";
+        }
+        if (!ApiKeyManager.isConfigured(senderPassword)) {
+            return "No Gmail App Password is configured: save it under Settings or set GMAIL_APP_PASSWORD.";
+        }
+        if (senderPassword.length() != 16) {
+            return "The Gmail App Password does not look right: Google App Passwords have 16 characters"
+                    + " (this one has " + senderPassword.length() + "). Create a new one at https://myaccount.google.com/apppasswords.";
+        }
+        return null;
+    }
 
     public EmailService() {
         // Default configuration with provided credentials
@@ -46,6 +75,12 @@ public class EmailService {
             // Generate HTML
             String emailBody = generateEmailHTML(recipientEmail, totalValue, totalInvestment, profitLoss, profitPercent,
                     items);
+            if (portfolioService.profitLossChecked().approximate()) {
+                // totals that used fixed fallback rates must say so
+                emailBody = emailBody.replace("<p style='color: #666;'>Daily Portfolio Report</p>",
+                        "<p style='color: #666;'>Daily Portfolio Report</p><p style='color: #b45309;'>&asymp; Totals use approximate "
+                                + "fixed exchange rates (live rates were unavailable); they are not validated figures.</p>");
+            }
 
             // Send email
             sendEmail(recipientEmail, "📊 Daily Portfolio Update - StockVault", emailBody);
@@ -173,15 +208,34 @@ public class EmailService {
     /**
      * Send email using Gmail SMTP
      */
-    private void sendEmail(String recipient, String subject, String htmlBody) throws Exception {
+    /**
+     * SMTP session settings. TLS is REQUIRED and the server certificate and host name are validated (no
+     * "mail.smtp.ssl.trust": trusting the host by name would skip certificate checks and let a man in the middle read
+     * the app password). Debug output is off: it prints the SMTP conversation to the console. Timeouts stop a dead
+     * server from hanging a thread forever.
+     */
+    static Properties mailProperties(String host, String port) {
         Properties props = new Properties();
         props.put("mail.smtp.auth", "true");
         props.put("mail.smtp.starttls.enable", "true");
-        props.put("mail.smtp.host", smtpHost);
-        props.put("mail.smtp.port", smtpPort);
-        props.put("mail.smtp.ssl.trust", smtpHost);
-        props.put("mail.smtp.ssl.protocols", "TLSv1.2");
-        props.put("mail.debug", "true"); // Enable debug output
+        props.put("mail.smtp.starttls.required", "true");
+        props.put("mail.smtp.ssl.checkserveridentity", "true");
+        props.put("mail.smtp.ssl.protocols", "TLSv1.2 TLSv1.3");
+        props.put("mail.smtp.host", host);
+        props.put("mail.smtp.port", port);
+        props.put("mail.smtp.connectiontimeout", "10000");
+        props.put("mail.smtp.timeout", "20000");
+        props.put("mail.smtp.writetimeout", "20000");
+        props.put("mail.debug", "false");
+        return props;
+    }
+
+    private void sendEmail(String recipient, String subject, String htmlBody) throws Exception {
+        String problem = configurationProblem();
+        if (problem != null) {
+            throw new Exception(problem); // nothing is sent and no connection is made
+        }
+        Properties props = mailProperties(smtpHost, smtpPort);
 
         Session session = Session.getInstance(props, new Authenticator() {
             @Override
@@ -200,21 +254,10 @@ public class EmailService {
             Transport.send(message);
             System.out.println("✅ Email sent successfully!");
         } catch (AuthenticationFailedException e) {
-            System.err.println("❌ AUTHENTICATION FAILED!");
-            System.err.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            System.err.println("⚠️  Gmail requires an APP PASSWORD, not your regular password!");
-            System.err.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            System.err.println("📋 STEPS TO FIX:");
-            System.err.println("1. Go to: https://myaccount.google.com/security");
-            System.err.println("2. Enable '2-Step Verification' (if not already enabled)");
-            System.err.println("3. Go to: https://myaccount.google.com/apppasswords");
-            System.err.println("4. Select 'Mail' and 'Other (Custom name)' - name it 'StockVault'");
-            System.err.println("5. Copy the 16-character password (format: xxxx xxxx xxxx xxxx)");
-            System.err.println("6. Open: src/com/portfolio/service/EmailService.java");
-            System.err.println("7. Replace 'Stockvault321' with your App Password (remove spaces)");
-            System.err.println("8. Recompile: javac -cp ... EmailService.java");
-            System.err.println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            throw new Exception("Gmail authentication failed. App Password required. See console for instructions.", e);
+            System.err.println("❌ Gmail rejected the login. Gmail needs an App Password, not your account password:");
+            System.err.println("   create one at https://myaccount.google.com/apppasswords and provide it as GMAIL_APP_PASSWORD");
+            System.err.println("   (environment variable or stockvault.local.properties). It is never stored in source files.");
+            throw new Exception("Gmail authentication failed. A Gmail App Password is required (save it under Settings, or set GMAIL_APP_PASSWORD).", e);
         }
     }
 
@@ -222,7 +265,8 @@ public class EmailService {
      * Check if email is configured
      */
     public boolean isConfigured() {
-        return senderEmail != null && senderPassword != null;
+        // an EMPTY password (no key configured) is not a configuration
+        return ApiKeyManager.isConfigured(senderEmail) && ApiKeyManager.isConfigured(senderPassword);
     }
 
     /**
@@ -236,8 +280,8 @@ public class EmailService {
      * Configure email settings
      */
     public void configure(String email, String password) {
-        this.senderEmail = email;
-        this.senderPassword = password;
+        this.senderEmail = ApiKeyManager.isConfigured(email) ? resolveSender(email) : email; // an empty address stays "not configured"
+        this.senderPassword = normalizePassword(password);
     }
 
     /**
