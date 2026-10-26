@@ -21,6 +21,10 @@ import java.util.Map;
 public final class HistoryService {
     public static final Duration MAX_AGE = Duration.ofHours(12);
     public static final Duration RETRY_AFTER = Duration.ofMinutes(5);
+    /** A daily quota will not come back for hours: asking again would only waste requests. */
+    public static final Duration QUOTA_RETRY_AFTER = Duration.ofHours(6);
+    /** A missing or rejected key may be fixed by the user at any moment, so look again soon. */
+    public static final Duration KEY_RETRY_AFTER = Duration.ofSeconds(30);
     /** Calendar days requested: enough for the 1Y range (providers return fewer if that is all they offer). */
     public static final int REQUESTED_DAYS = 400;
     private static final long MIN_FETCH_GAP_MILLIS = 1_300; // free tiers allow only a few calls per minute
@@ -37,8 +41,9 @@ public final class HistoryService {
     private final Clock clock;
     private final String source;
     private final Map<String, Object> locks = new HashMap<>();
-    private final Map<String, Instant> failedAt = new HashMap<>();
+    private final Map<String, Instant> failedUntil = new HashMap<>();
     private final Map<String, String> failedWhy = new HashMap<>();
+    private final Map<String, PriceUnavailableException.Reason> failedReason = new HashMap<>();
     private long lastFetchMillis;
 
     public HistoryService(StockPriceService prices, PriceHistoryDAO dao, Clock clock, String source) {
@@ -78,17 +83,19 @@ public final class HistoryService {
             if (have != null && !have.stale()) {
                 return have;
             }
-            Instant failed;
+            Instant until;
             String why;
+            PriceUnavailableException.Reason reason;
             synchronized (this) {
-                failed = failedAt.get(key);
+                until = failedUntil.get(key);
                 why = failedWhy.get(key);
+                reason = failedReason.get(key);
             }
-            if (failed != null && Duration.between(failed, clock.instant()).compareTo(RETRY_AFTER) < 0) {
+            if (until != null && clock.instant().isBefore(until)) {
                 if (have != null) {
                     return have;
                 }
-                throw new PriceUnavailableException(PriceUnavailableException.Reason.PROVIDER_MESSAGE, why);
+                throw new PriceUnavailableException(reason == null ? PriceUnavailableException.Reason.PROVIDER_MESSAGE : reason, why);
             }
             try {
                 pace();
@@ -100,14 +107,16 @@ public final class HistoryService {
                     // the series is still good for this session even if it could not be saved
                 }
                 synchronized (this) {
-                    failedAt.remove(key);
+                    failedUntil.remove(key);
                     failedWhy.remove(key);
+                    failedReason.remove(key);
                 }
                 return new Result(fresh, now, false, source);
             } catch (PriceUnavailableException e) {
                 synchronized (this) {
-                    failedAt.put(key, clock.instant());
+                    failedUntil.put(key, clock.instant().plus(cooldown(e)));
                     failedWhy.put(key, e.getMessage());
+                    failedReason.put(key, e.getReason());
                 }
                 if (have != null) {
                     return have; // stale but real, and labelled as such
@@ -115,6 +124,19 @@ public final class HistoryService {
                 throw e;
             }
         }
+    }
+
+    /** How long to leave a failed symbol alone, by the kind of failure. */
+    static Duration cooldown(PriceUnavailableException e) {
+        PriceUnavailableException.Reason r = e.getReason();
+        if (r == PriceUnavailableException.Reason.NO_KEY || r == PriceUnavailableException.Reason.INVALID_KEY) {
+            return KEY_RETRY_AFTER;
+        }
+        String m = e.getMessage() == null ? "" : e.getMessage().toLowerCase(java.util.Locale.ROOT);
+        if (r == PriceUnavailableException.Reason.RATE_LIMIT && (m.contains("daily") || m.contains("per day"))) {
+            return QUOTA_RETRY_AFTER;
+        }
+        return RETRY_AFTER;
     }
 
     private void pace() {

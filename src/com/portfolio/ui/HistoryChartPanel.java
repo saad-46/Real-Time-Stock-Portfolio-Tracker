@@ -31,6 +31,7 @@ public class HistoryChartPanel extends JPanel {
 
     private final TimeSeriesChart chart = new TimeSeriesChart();
     private final JPanel rangeBar = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
+    private final StatusChip chip = new StatusChip();
     private final List<JButton> buttons = new ArrayList<>();
     private List<TimeSeriesChart.Series> full = List.of();
     private boolean daily = true;
@@ -52,7 +53,14 @@ public class HistoryChartPanel extends JPanel {
             buttons.add(b);
             rangeBar.add(b);
         }
-        add(rangeBar, BorderLayout.NORTH);
+        JPanel header = new JPanel(new BorderLayout(8, 0));
+        header.setOpaque(false);
+        JPanel chipSlot = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        chipSlot.setOpaque(false);
+        chipSlot.add(chip);
+        header.add(rangeBar, BorderLayout.WEST);
+        header.add(chipSlot, BorderLayout.EAST);
+        add(header, BorderLayout.NORTH);
         add(chart, BorderLayout.CENTER);
         styleButtons();
     }
@@ -78,13 +86,31 @@ public class HistoryChartPanel extends JPanel {
         this.now = instant;
     }
 
+    StatusChip chip() {
+        return chip;
+    }
+
+    /** Shows the data with its provenance as a compact chip (live / cached / demo / your records) instead of a footnote. */
+    public void showSeries(List<TimeSeriesChart.Series> lines, boolean dailyData, DataStatus status, String detail, String tooltip) {
+        showSeries(lines, dailyData, "");
+        chip.set(status, detail, tooltip);
+    }
+
+    /** Nothing to draw, and why; the chip says so too. */
+    public void showUnavailable(String reason) {
+        showMessage(reason);
+        chip.set(DataStatus.UNAVAILABLE, null, reason);
+    }
+
     public void showLoading(String what) {
+        chip.clear();
         full = List.of();
         chart.setMessage("Loading " + what + "...");
         updateEnabled();
     }
 
     public void showMessage(String text) {
+        chip.clear();
         full = List.of();
         chart.setMessage(text);
         updateEnabled();

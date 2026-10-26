@@ -172,6 +172,15 @@ public class TimeSeriesChart extends JPanel {
         getAccessibleContext().setAccessibleName(name);
     }
 
+    /** Names of the lines currently shown (for tests and accessibility descriptions). */
+    public List<String> seriesNames() {
+        List<String> names = new ArrayList<>();
+        for (Series s : series) {
+            names.add(s.name());
+        }
+        return names;
+    }
+
     public boolean hasChart() {
         return primary() != null;
     }

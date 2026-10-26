@@ -1,6 +1,8 @@
 package com.portfolio.service;
 
 import com.portfolio.model.Stock;
+import org.json.JSONException;
+import org.json.JSONObject;
 import com.portfolio.service.PriceUnavailableException.Reason;
 
 import java.io.IOException;
@@ -57,22 +59,16 @@ public class TwelveDataService implements StockPriceService {
                 throw new PriceUnavailableException(Reason.HTTP_ERROR, "Twelve Data returned HTTP " + status);
             }
             String body = response.body();
-            if (body.contains("\"code\"") && body.contains("\"status\":\"error\"")) {
-                // Twelve Data reports quota (429), key (401) and unknown symbol (400/404) with HTTP 200 and an error body.
-                if (body.contains("\"code\":429")) {
-                    throw new PriceUnavailableException(Reason.RATE_LIMIT, "Twelve Data rate limit reached");
+            JSONObject error = errorBody(body);
+            if (error != null) {
+                // Twelve Data reports quota (429), key (401), plan (403) and unknown symbol (400/404) with HTTP 200 and an error body.
+                switch (error.optInt("code", 0)) {
+                    case 429 -> throw new PriceUnavailableException(Reason.RATE_LIMIT, "Twelve Data rate limit reached");
+                    case 401 -> throw new PriceUnavailableException(Reason.INVALID_KEY, "Twelve Data rejected the API key");
+                    case 403 -> throw new PriceUnavailableException(Reason.UNSUPPORTED, "Twelve Data: this symbol is not included in the current plan");
+                    case 404 -> throw new PriceUnavailableException(Reason.SYMBOL_NOT_FOUND, "Twelve Data does not know this symbol");
+                    default -> throw new PriceUnavailableException(Reason.PROVIDER_MESSAGE, "Twelve Data returned an error instead of data");
                 }
-                if (body.contains("\"code\":401")) {
-                    throw new PriceUnavailableException(Reason.INVALID_KEY, "Twelve Data rejected the API key");
-                }
-                if (body.contains("\"code\":403")) {
-                    // e.g. a symbol that needs a higher plan
-                    throw new PriceUnavailableException(Reason.UNSUPPORTED, "Twelve Data: this symbol is not included in the current plan");
-                }
-                if (body.contains("\"code\":404")) {
-                    throw new PriceUnavailableException(Reason.SYMBOL_NOT_FOUND, "Twelve Data does not know this symbol");
-                }
-                throw new PriceUnavailableException(Reason.PROVIDER_MESSAGE, "Twelve Data returned an error instead of a quote");
             }
             return body;
         } catch (IOException e) {
@@ -80,6 +76,19 @@ public class TwelveDataService implements StockPriceService {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new PriceUnavailableException(Reason.INTERRUPTED, "Interrupted while contacting Twelve Data", e);
+        }
+    }
+
+    /** The parsed error object if the body is Twelve Data's error shape ({"status":"error", "code":...}), else null. */
+    static JSONObject errorBody(String body) {
+        if (body == null || !body.stripLeading().startsWith("{")) {
+            return null;
+        }
+        try {
+            JSONObject json = new JSONObject(body);
+            return "error".equalsIgnoreCase(json.optString("status", "")) ? json : null;
+        } catch (JSONException e) {
+            return null;
         }
     }
 

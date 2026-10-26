@@ -145,6 +145,17 @@ public class PremiumStockDashboard extends JFrame {
     private final TextToSpeechService ttsService;
     private final NewsService newsService;
     private final HistoryService historyService;
+
+    /** True when the figures come from the demo fixtures (demo mode, or a simulated price provider), never from a real provider. */
+    private boolean isSimulatedData() {
+        return com.portfolio.demo.DemoMode.isActive() || portfolioService.getPriceService() instanceof com.portfolio.demo.DemoPriceService;
+    }
+
+    private static String clockText(java.time.Instant t) {
+        java.time.ZonedDateTime z = t.atZone(java.time.ZoneId.systemDefault());
+        return z.toLocalDate().equals(java.time.LocalDate.now()) ? z.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))
+                : z.format(java.time.format.DateTimeFormatter.ofPattern("dd MMM HH:mm", java.util.Locale.ENGLISH));
+    }
     /** Quotes the user asked the provider for on the Market page (session cache; provider data, never sample numbers). */
     private final java.util.Map<String, Stock> marketQuotes = new java.util.concurrent.ConcurrentHashMap<>();
     private volatile String marketQuotesNote = "";
@@ -245,6 +256,7 @@ public class PremiumStockDashboard extends JFrame {
             }
         });
         setSize(1400, 900);
+        setMinimumSize(new Dimension(1000, 640));
         setMinimumSize(new Dimension(1200, 700));
         setLocationRelativeTo(null);
         getContentPane().setBackground(BG());
@@ -401,15 +413,25 @@ public class PremiumStockDashboard extends JFrame {
         // Footer
         JPanel footer = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 15));
         footer.setOpaque(false);
-        JLabel verIcon = new JLabel("🟢");
-        verIcon.setFont(new Font("Segoe UI Emoji", Font.PLAIN, 11));
-        verIcon.setForeground(TEXT_DIM());
-        JLabel verText = new JLabel("v3.0  •  Market Open");
+        final boolean simulatedUi = isSimulatedData();
+        JComponent statusDot = new JComponent() {
+            @Override
+            protected void paintComponent(Graphics g) {
+                Graphics2D g2 = (Graphics2D) g.create();
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(simulatedUi ? DataStatus.DEMO.dot : TEXT_DIM());
+                g2.fillOval(1, 1, 8, 8);
+                g2.dispose();
+            }
+        };
+        statusDot.setPreferredSize(new Dimension(10, 10));
+        statusDot.setToolTipText(simulatedUi ? "Demo data: simulated prices, not live" : "StockVault");
+        JLabel verText = new JLabel(simulatedUi ? "Demo data (simulated)" : "StockVault v3.0");
         verText.setFont(new Font("Segoe UI", Font.PLAIN, 11));
         verText.setForeground(TEXT_DIM());
         verText.setVisible(false);
         navLabels.add(verText);
-        footer.add(verIcon);
+        footer.add(statusDot);
         footer.add(verText);
         sidebar.add(footer, BorderLayout.SOUTH);
 
@@ -491,10 +513,10 @@ public class PremiumStockDashboard extends JFrame {
         topbar.setBackground(TOPBAR_BG());
         topbar.setBorder(new CompoundBorder(
                 new MatteBorder(0, 0, 1, 0, BORDER()),
-                new EmptyBorder(15, 25, 15, 25)));
+                new EmptyBorder(10, 24, 10, 24)));
 
         pageTitle = new JLabel("Dashboard");
-        pageTitle.setFont(FONT_TITLE);
+        pageTitle.setFont(FONT_TITLE.deriveFont(25f));
         pageTitle.setForeground(TEXT());
         topbar.add(pageTitle, BorderLayout.WEST);
 
@@ -516,13 +538,9 @@ public class PremiumStockDashboard extends JFrame {
         }
         controls.add(plLabel);
 
-        if (com.portfolio.demo.DemoMode.isActive()) {
-            JLabel demoBadge = new JLabel("DEMO DATA");
-            demoBadge.setFont(new Font("Segoe UI", Font.BOLD, 12));
-            demoBadge.setForeground(new Color(251, 191, 36));
-            demoBadge.setBorder(new CompoundBorder(new LineBorder(new Color(251, 191, 36), 1, true), new EmptyBorder(3, 8, 3, 8)));
-            demoBadge.setToolTipText("Simulated prices, balances, transactions and headlines. Nothing here is live or real, and nothing is saved to your real data.");
-            controls.add(demoBadge);
+        if (isSimulatedData()) { // a quiet neutral chip, not a banner: the numbers on screen are simulated
+            controls.add(new StatusChip(DataStatus.DEMO, "simulated", "Simulated prices, balances, transactions and headlines. "
+                    + "Nothing here is live or real, and nothing is saved to your real data."));
         }
 
         // Visible whenever any displayed figure recently used approximate (fixed) exchange rates; clears when live rates work.
@@ -609,7 +627,7 @@ public class PremiumStockDashboard extends JFrame {
     }
 
     private String formatCurrency(double amount) {
-        return String.format("%s%.2f", getCurrencySymbol(), amount);
+        return getCurrencySymbol() + String.format(java.util.Locale.forLanguageTag("en-IN"), "%,.2f", amount);
     }
 
     // ----- Catalogue display: real values only -----
@@ -782,7 +800,7 @@ public class PremiumStockDashboard extends JFrame {
         // Stats cards
         JPanel statsPanel = new JPanel(new GridLayout(1, 4, 20, 0));
         statsPanel.setBackground(BG);
-        statsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 120));
+        statsPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, 100));
 
         PortfolioService.Valuation totalValueV = portfolioService.currentValueChecked();
         PortfolioService.Valuation totalInvestmentV = portfolioService.totalInvestmentChecked();
@@ -1163,6 +1181,7 @@ public class PremiumStockDashboard extends JFrame {
                 Map<String, List<PriceHistory.Point>> closes = new HashMap<>();
                 List<String> failed = new ArrayList<>();
                 boolean stale = false;
+                java.time.Instant oldest = null;
                 Set<String> symbols = new TreeSet<>();
                 for (Transaction t : ledger) {
                     symbols.add(t.getSymbol().toUpperCase(Locale.ROOT));
@@ -1172,11 +1191,14 @@ public class PremiumStockDashboard extends JFrame {
                         HistoryService.Result r = historyService.get(sym);
                         closes.put(sym, r.points());
                         stale |= r.stale();
+                        if (oldest == null || r.fetchedAt().isBefore(oldest)) {
+                            oldest = r.fetchedAt();
+                        }
                     } catch (RuntimeException e) {
                         failed.add(sym);
                     }
                 }
-                return new Object[] { PortfolioHistory.compute(ledger, closes, java.time.LocalDate.now()), failed, stale };
+                return new Object[] { PortfolioHistory.compute(ledger, closes, java.time.LocalDate.now()), failed, stale, oldest, closes.size() };
             }
 
             @Override
@@ -1187,6 +1209,8 @@ public class PremiumStockDashboard extends JFrame {
                     PortfolioHistory.Result res = (PortfolioHistory.Result) r[0];
                     List<String> failed = (List<String>) r[1];
                     boolean stale = (Boolean) r[2];
+                    java.time.Instant oldest = (java.time.Instant) r[3];
+                    int pricedSymbols = (Integer) r[4];
                     List<PortfolioHistory.Day> days = res.days();
                     int n = days.size();
                     if (n < 2) {
@@ -1204,7 +1228,7 @@ public class PremiumStockDashboard extends JFrame {
                         }
                     }
                     List<TimeSeriesChart.Series> lines = new ArrayList<>();
-                    if (known >= 2) {
+                    if (known >= 2 && pricedSymbols > 0) {
                         long[] t2 = new long[known];
                         double[] v2 = new double[known];
                         int k = 0;
@@ -1217,18 +1241,24 @@ public class PremiumStockDashboard extends JFrame {
                         lines.add(new TimeSeriesChart.Series("Market value", new Color(139, 92, 246), t2, v2, false, true));
                     }
                     lines.add(new TimeSeriesChart.Series("Invested capital", new Color(20, 184, 166), ti, inv, true, false));
-                    String note = com.portfolio.demo.DemoMode.isActive() ? "DEMO DATA (simulated)" : "Daily closes from your data provider";
-                    if (stale) {
-                        note += " (some cached)";
+                    boolean simulated = isSimulatedData();
+                    if (pricedSymbols == 0) { // no provider data at all: only the ledger is real, and the chart says so
+                        history.showSeries(lines, true, DataStatus.LOCAL, "invested capital only",
+                                "Price history could not be loaded, so market value is not shown.");
+                        history.chart().setFootnote("Market value unavailable: no price history could be loaded");
+                        return;
                     }
+                    DataStatus status = simulated ? DataStatus.DEMO : stale ? DataStatus.CACHED : DataStatus.LIVE;
+                    String detail = simulated ? "simulated" : oldest == null ? null : (stale ? "as of " : "updated ") + clockText(oldest);
+                    history.showSeries(lines, true, status, detail, simulated ? "Simulated history for demonstration."
+                            : "Daily closes from your data provider, combined with your own transactions.");
                     if (!failed.isEmpty()) {
-                        note += "; no history for " + String.join(", ", failed) + ", valued at your trade price";
+                        history.chart().setFootnote("No history for " + String.join(", ", failed) + ": valued at your trade price");
                     }
-                    history.showSeries(lines, true, note);
                 } catch (InterruptedException ex) {
                     Thread.currentThread().interrupt();
                 } catch (java.util.concurrent.ExecutionException ex) {
-                    history.showMessage("Portfolio history is unavailable right now.");
+                    history.showUnavailable("Portfolio history is unavailable right now.");
                 }
             }
         }.execute();
@@ -1428,7 +1458,7 @@ public class PremiumStockDashboard extends JFrame {
                         bannerContainer.removeAll();
                         boolean demoNews = com.portfolio.demo.DemoMode.isActive();
                         liveIndicator.setText(news.isEmpty() ? "UNAVAILABLE" : demoNews ? "DEMO DATA" : "LIVE");
-                        liveIndicator.setBackground(news.isEmpty() ? new Color(185, 28, 28) : demoNews ? new Color(180, 83, 9) : new Color(21, 128, 61));
+                        liveIndicator.setBackground(news.isEmpty() ? new Color(185, 28, 28) : demoNews ? new Color(71, 85, 105) : new Color(21, 128, 61));
                         if (news.isEmpty()) {
                             JLabel empty = new JLabel("No headlines: " + (fetched.problem() == null ? "none were returned" : fetched.problem()));
                             empty.setFont(new Font("Consolas", Font.PLAIN, 14));
@@ -1951,7 +1981,7 @@ public class PremiumStockDashboard extends JFrame {
                 }
             }
             balanceChart.showSeries(List.of(new TimeSeriesChart.Series("Wallet balance", new Color(59, 130, 246), times, bal, true, true)),
-                    false, com.portfolio.demo.DemoMode.isActive() ? "DEMO DATA (simulated)" : "From your wallet ledger");
+                    false, isSimulatedData() ? DataStatus.DEMO : DataStatus.LOCAL, isSimulatedData() ? "simulated" : "from your ledger", null);
         }
         chartCard.add(balanceChart);
 
@@ -2184,17 +2214,33 @@ public class PremiumStockDashboard extends JFrame {
         applyFilter.setPreferredSize(new Dimension(80, 35));
         filterPanel.add(applyFilter);
 
-        filterPanel.add(Box.createHorizontalStrut(20));
+        JPanel actionRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 15, 0));
+        actionRow.setOpaque(false);
+        actionRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 45));
         JButton toggleView = createStyledButton("📋 Table View", ACCENT2);
         toggleView.setPreferredSize(new Dimension(130, 35));
-        filterPanel.add(toggleView);
+        actionRow.add(toggleView);
 
         content.add(filterPanel);
-        content.add(Box.createVerticalStrut(20));
+        content.add(Box.createVerticalStrut(8));
+        content.add(actionRow);
+        content.add(Box.createVerticalStrut(12));
 
         // Popular stocks views
         JPanel gridPanel = new JPanel(new GridLayout(0, 3, 20, 20));
         gridPanel.setBackground(BG);
+        page.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                int w = page.getWidth();
+                int columns = w >= 1150 ? 3 : w >= 780 ? 2 : 1;
+                GridLayout layout = (GridLayout) gridPanel.getLayout();
+                if (layout.getColumns() != columns) {
+                    layout.setColumns(columns);
+                    gridPanel.revalidate();
+                }
+            }
+        });
 
         JPanel tableWrapper = new JPanel(new BorderLayout());
         tableWrapper.setBackground(BG);
@@ -2325,7 +2371,7 @@ public class PremiumStockDashboard extends JFrame {
         loadQuotes.setPreferredSize(new Dimension(130, 35));
         loadQuotes.setToolTipText("Fetch current quotes from your data provider for the instruments shown (uses provider requests)");
         loadQuotes.getAccessibleContext().setAccessibleName("Load quotes for the instruments shown");
-        filterPanel.add(loadQuotes);
+        actionRow.add(loadQuotes);
         loadQuotes.addActionListener(e -> {
             java.util.List<String> wanted = new java.util.ArrayList<>(visibleSymbols.subList(0, Math.min(12, visibleSymbols.size())));
             if (wanted.isEmpty()) {
@@ -3404,9 +3450,12 @@ public class PremiumStockDashboard extends JFrame {
                         hi = Math.max(hi, v[i]);
                         lo = Math.min(lo, v[i]);
                     }
-                    String note = r.source() + " - " + n + " daily closes" + (r.stale() ? " (cached, may be out of date)" : "");
                     Color line = v[n - 1] >= v[0] ? GREEN : RED;
-                    panel.showSeries(List.of(new TimeSeriesChart.Series(symbol, line, t, v, false, true)), true, note);
+                    boolean simulated = isSimulatedData();
+                    DataStatus status = simulated ? DataStatus.DEMO : r.stale() ? DataStatus.CACHED : DataStatus.LIVE;
+                    String detail = n + " daily closes \u00b7 " + (simulated ? "simulated" : (r.stale() ? "as of " : "updated ") + clockText(r.fetchedAt()));
+                    panel.showSeries(List.of(new TimeSeriesChart.Series(symbol, line, t, v, false, true)), true, status, detail,
+                            r.stale() ? "Stored from an earlier request; the provider could not be reached or is rate-limited." : null);
                     setMetricValue(highLine, formatMoney(hi));
                     setMetricValue(lowLine, formatMoney(lo));
                 } catch (InterruptedException ex) {
@@ -3414,7 +3463,7 @@ public class PremiumStockDashboard extends JFrame {
                 } catch (java.util.concurrent.ExecutionException ex) {
                     Throwable c = ex.getCause();
                     String why = c instanceof PriceUnavailableException ? c.getMessage() : "the data provider did not answer";
-                    panel.showMessage("Price history unavailable: " + why + "\nNo chart is shown rather than an invented one.");
+                    panel.showUnavailable("Price history unavailable: " + why + "\nNo chart is shown rather than an invented one.");
                     setMetricValue(highLine, "Unavailable");
                     setMetricValue(lowLine, "Unavailable");
                 }
@@ -5424,41 +5473,62 @@ public class PremiumStockDashboard extends JFrame {
         RoundedPanel card = new RoundedPanel(20); // ROUNDED CORNERS!
         card.setLayout(new BoxLayout(card, BoxLayout.Y_AXIS));
         card.setBackground(CARD_BG());
-        card.setBorder(new EmptyBorder(25, 25, 25, 25)); // More padding
+        card.setBorder(new EmptyBorder(16, 20, 16, 20));
 
         JLabel labelComp = new JLabel(label);
-        labelComp.setFont(new Font("Segoe UI", Font.BOLD, 16)); // Larger
+        labelComp.setFont(new Font("Segoe UI", Font.PLAIN, 13));
         labelComp.setForeground(TEXT_DIM());
         labelComp.setAlignmentX(Component.CENTER_ALIGNMENT); // CENTER!
 
         JLabel valueComp = new JLabel(value);
-        valueComp.setFont(new Font("Segoe UI", Font.BOLD, 32)); // MUCH LARGER!
+        valueComp.setFont(new Font("Segoe UI", Font.BOLD, 26));
         valueComp.setForeground(color);
         valueComp.setAlignmentX(Component.CENTER_ALIGNMENT); // CENTER!
 
         card.add(labelComp);
-        card.add(Box.createVerticalStrut(10));
+        card.add(Box.createVerticalStrut(6));
         card.add(valueComp);
 
         return card;
     }
 
     private JTable createStyledTable(DefaultTableModel model) {
+        final int[] hoverRow = { -1 };
         JTable table = new JTable(model) {
             @Override
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
                 Component c = super.prepareRenderer(renderer, row, column);
                 if (c instanceof JLabel) {
-                    ((JLabel) c).setHorizontalAlignment(SwingConstants.CENTER); // CENTER ALL!
+                    ((JLabel) c).setHorizontalAlignment(SwingConstants.CENTER);
+                }
+                if (row == hoverRow[0] && !isRowSelected(row)) {
+                    c.setBackground(CARD_HOVER());
                 }
                 return c;
             }
         };
+        table.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                int row = table.rowAtPoint(e.getPoint());
+                if (row != hoverRow[0]) {
+                    hoverRow[0] = row;
+                    table.repaint();
+                }
+            }
+        });
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseExited(MouseEvent e) {
+                hoverRow[0] = -1;
+                table.repaint();
+            }
+        });
 
         table.setBackground(CARD_BG());
         table.setForeground(TEXT());
-        table.setFont(new Font("Segoe UI", Font.BOLD, 15)); // BOLD!
-        table.setRowHeight(45); // TALLER!
+        table.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        table.setRowHeight(44);
         table.setShowGrid(false);
         table.setIntercellSpacing(new Dimension(0, 0));
         table.setSelectionBackground(CARD_HOVER());
@@ -5467,17 +5537,18 @@ public class PremiumStockDashboard extends JFrame {
         // Center align all columns
         DefaultTableCellRenderer centerRenderer = new DefaultTableCellRenderer();
         centerRenderer.setHorizontalAlignment(SwingConstants.CENTER);
-        centerRenderer.setFont(new Font("Segoe UI", Font.BOLD, 15)); // BOLD!
+        centerRenderer.setFont(new Font("Segoe UI", Font.PLAIN, 14));
         for (int i = 0; i < table.getColumnCount(); i++) {
             table.getColumnModel().getColumn(i).setCellRenderer(centerRenderer);
         }
 
         JTableHeader header = table.getTableHeader();
-        header.setBackground(BG());
-        header.setForeground(ACCENT2); // Use violet accent for headers
-        header.setFont(new Font("Segoe UI", Font.BOLD, 16)); // BOLD HEADER!
-        header.setBorder(new MatteBorder(0, 0, 2, 0, ACCENT2));
-        header.setPreferredSize(new Dimension(0, 50)); // TALLER HEADER!
+        header.setBackground(SIDEBAR_BG());
+        header.setForeground(TEXT_DIM());
+        header.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        header.setBorder(new MatteBorder(0, 0, 1, 0, BORDER()));
+        header.setPreferredSize(new Dimension(0, 38));
+        header.setReorderingAllowed(false);
 
         // Center align headers
         ((DefaultTableCellRenderer) header.getDefaultRenderer()).setHorizontalAlignment(SwingConstants.CENTER);
@@ -5491,28 +5562,19 @@ public class PremiumStockDashboard extends JFrame {
             }
         }
 
+        TableSorting.install(table); // click a header to sort by the number or date inside the text
         return table;
     }
 
-    class DynamicColorRenderer extends DefaultTableCellRenderer {
+    static class DynamicColorRenderer extends DefaultTableCellRenderer {
         @Override
         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus,
                 int row, int column) {
             Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             setHorizontalAlignment(SwingConstants.CENTER);
-            setFont(new Font("Segoe UI", Font.BOLD, 15));
-
-            if (value != null) {
-                String str = value.toString();
-                if (str.contains("+") || (str.startsWith(getCurrencySymbol()) && !str.contains("-")
-                        && !str.equals(getCurrencySymbol() + "0.00"))) {
-                    c.setForeground(GREEN);
-                } else if (str.contains("-")) {
-                    c.setForeground(RED);
-                } else {
-                    c.setForeground(TEXT());
-                }
-            }
+            setFont(new Font("Segoe UI", column == 0 ? Font.BOLD : Font.PLAIN, 14));
+            // only an explicitly signed figure is a gain or a loss; prices, totals and dates stay neutral
+            c.setForeground(TableSorting.semanticColor(value == null ? "" : value.toString(), GREEN, RED, TEXT()));
 
             if (isSelected) {
                 c.setBackground(CARD_HOVER());
@@ -7386,6 +7448,6 @@ public class PremiumStockDashboard extends JFrame {
 
     /** Money with digit grouping (Indian style), for the wallet summary. */
     private String formatMoney(double amount) {
-        return getCurrencySymbol() + String.format(java.util.Locale.forLanguageTag("en-IN"), "%,.2f", amount);
+        return formatCurrency(amount);
     }
 }

@@ -118,7 +118,7 @@ class HistoryServiceTest {
     @Test
     void withNoStoredSeriesAFailureIsReportedAndNotRetriedForAWhile() {
         Fake provider = new Fake();
-        provider.failure = quota();
+        provider.failure = new PriceUnavailableException(PriceUnavailableException.Reason.NETWORK, "Twelve Data network error: quota or timeout");
         TestClock clock = new TestClock();
         HistoryService svc = new HistoryService(provider, new PriceHistoryDAO(), clock, "p");
         PriceUnavailableException first = assertThrows(PriceUnavailableException.class, () -> svc.get("SBIN"));

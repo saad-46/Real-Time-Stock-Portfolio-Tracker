@@ -63,7 +63,15 @@ public class MultiSourceStockService implements StockPriceService {
             throw new PriceUnavailableException(Reason.SYMBOL_NOT_FOUND, e.getMessage());
         }
         return SymbolResolver.forProvider(instrument, kind).orElseThrow(() -> new PriceUnavailableException(Reason.UNSUPPORTED,
-                kind + " does not cover " + SymbolResolver.describe(instrument)));
+                displayName(kind) + " does not cover " + SymbolResolver.describe(instrument)));
+    }
+
+    private static String displayName(SymbolResolver.Provider kind) {
+        return switch (kind) {
+            case ALPHA_VANTAGE -> "Alpha Vantage";
+            case TWELVE_DATA -> "Twelve Data";
+            case FINNHUB -> "Finnhub";
+        };
     }
 
     /** Quotes come back under the provider's spelling; the portfolio keeps the symbol it stored. */
@@ -95,19 +103,47 @@ public class MultiSourceStockService implements StockPriceService {
         } else {
             order.addAll(chain);
         }
-        PriceUnavailableException first = null;
+        PriceUnavailableException best = null;
+        java.util.LinkedHashSet<String> reasons = new java.util.LinkedHashSet<>();
         for (StockPriceService p : order) {
             try {
                 return p.getHistoricalData(providerSymbol(p, symbol), days);
             } catch (PriceUnavailableException e) {
-                System.out.println("⚠️ " + p.getClass().getSimpleName() + " historical failed for " + symbol + ": " + e.getReason());
-                if (first == null || first.getReason() == Reason.NO_KEY) {
-                    first = e;
+                System.out.println("\u26a0\ufe0f " + p.getClass().getSimpleName() + " historical failed for " + symbol + ": " + e.getReason());
+                if (e.getReason() != Reason.NO_KEY) {
+                    reasons.add(withProvider(p, e.getMessage()));
+                }
+                if (best == null || rank(e.getReason()) > rank(best.getReason())) {
+                    best = e;
                 }
             }
         }
-        throw first != null ? first
-                : new PriceUnavailableException(Reason.UNSUPPORTED, "Historical data unavailable for " + symbol);
+        if (best == null) {
+            throw new PriceUnavailableException(Reason.UNSUPPORTED, "Historical data unavailable for " + symbol);
+        }
+        if (reasons.isEmpty()) {
+            throw best; // every provider simply had no key
+        }
+        throw new PriceUnavailableException(best.getReason(), String.join("; ", reasons));
+    }
+
+    /** How actionable a failure is for the user: a quota or key problem beats "not in plan", which beats a missing key. */
+    private static int rank(Reason r) {
+        return switch (r) {
+            case RATE_LIMIT -> 6;
+            case INVALID_KEY -> 5;
+            case NETWORK -> 4;
+            case UNSUPPORTED, SYMBOL_NOT_FOUND -> 3;
+            case NO_KEY -> 0;
+            default -> 2;
+        };
+    }
+
+    private String withProvider(StockPriceService p, String message) {
+        String name = p == twelveDataService ? "Twelve Data" : p == alphaVantageService ? "Alpha Vantage"
+                : p == finnhubService ? "Finnhub" : p.getClass().getSimpleName();
+        String m = message == null ? "unavailable" : message;
+        return m.startsWith(name) ? m : name + ": " + m;
     }
 
     /** Search for stocks. Uses Finnhub (broader coverage). */
